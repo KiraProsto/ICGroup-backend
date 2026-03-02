@@ -7,6 +7,9 @@ __pycache__/
 dist/
 build/
 
+# Prisma generated client (rebuilt from schema.prisma via `prisma generate`)
+src/generated/
+
 # IDE
 .vscode/
 .idea/
