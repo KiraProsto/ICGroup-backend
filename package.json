@@ -21,9 +21,9 @@
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
-    "prisma:studio": "prisma studio"
+    "prisma:migrate": "node -r dotenv/config node_modules/prisma/build/index.js migrate dev",
+    "prisma:deploy": "node -r dotenv/config node_modules/prisma/build/index.js migrate deploy",
+    "prisma:studio": "node -r dotenv/config node_modules/prisma/build/index.js studio"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.14",
