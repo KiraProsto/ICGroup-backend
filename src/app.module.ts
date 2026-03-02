@@ -9,6 +9,7 @@ import authConfig from './config/auth.config.js';
 import storageConfig from './config/storage.config.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { PrismaModule } from './prisma/prisma.module.js';
 
 @Module({
   imports: [
@@ -61,9 +62,12 @@ import { AppService } from './app.service.js';
       ],
     }),
 
+    // ── Database (global — available to all feature modules) ───────
+    PrismaModule,
+
     // Feature modules will be added here in subsequent tasks:
     // AuthModule, UsersModule, ContentModule, SalesModule,
-    // AuditModule, PublicApiModule, PrismaModule
+    // AuditModule, PublicApiModule
   ],
   controllers: [AppController],
   providers: [AppService],
