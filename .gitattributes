@@ -1,0 +1,20 @@
+# Force LF line endings for all text/source files.
+# Prevents CRLF creeping in from Windows checkouts and breaking Prettier/lint.
+* text=auto eol=lf
+
+# Explicit overrides for key file types
+*.ts   text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.env* text eol=lf
+*.sh   text eol=lf
+
+# Binaries — do not touch line endings
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.gz   binary
+*.zip  binary

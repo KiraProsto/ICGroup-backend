@@ -1,0 +1,241 @@
+// This is your Prisma schema file.
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+//
+// NOTE: Prisma v7 — generated client output is src/generated/prisma/
+// Import from that path, not from @prisma/client.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // url is no longer set here in Prisma v7.
+  // For migrations: connection is configured in prisma.config.ts
+  // For runtime:    PrismaPg adapter is passed to PrismaClient constructor
+}
+
+// ─────────────────────────────────────────────
+//  ENUMS
+// ─────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  CONTENT_MANAGER
+  SALES_MANAGER
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum PageType {
+  HOME
+  ABOUT
+}
+
+enum SectionType {
+  HERO
+  FEATURE_GRID
+  TESTIMONIALS
+  CTA
+  TEXT
+  GALLERY
+}
+
+enum PurchaseStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PUBLISH
+  ARCHIVE
+}
+
+enum AuditResourceType {
+  User
+  Page
+  NewsArticle
+  Company
+  Purchase
+}
+
+enum AuditLogStatus {
+  SUCCESS
+  FAILURE
+}
+
+// ─────────────────────────────────────────────
+//  USERS & AUTH
+// ─────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         Role
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  pages        Page[]
+  newsArticles NewsArticle[]
+  purchases    Purchase[]
+  auditLogs    AuditLog[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+//  CONTENT — PAGES
+// ─────────────────────────────────────────────
+
+model Page {
+  id          String        @id @default(uuid())
+  type        PageType      @unique
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?     @map("published_at")
+  createdById String        @map("created_by")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  sections    PageSection[]
+  author      User          @relation(fields: [createdById], references: [id])
+
+  @@map("pages")
+}
+
+model PageSection {
+  id     String      @id @default(uuid())
+  pageId String      @map("page_id")
+  type   SectionType // hero, feature-grid, testimonials, etc.
+  order  Int
+  data   Json        // JSONB — variable content payload, validated by Zod per type
+
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([pageId, order])
+  @@map("page_sections")
+}
+
+// ─────────────────────────────────────────────
+//  CONTENT — NEWS
+// ─────────────────────────────────────────────
+
+model NewsArticle {
+  id          String        @id @default(uuid())
+  title       String
+  slug        String        @unique
+  excerpt     String?
+  // Source of truth — ProseMirror/Tiptap JSON
+  body        Json
+  // Pre-rendered HTML (generated on publish via generateHTML())
+  bodyHtml    String?       @map("body_html")
+  // Plain text extraction (generated on publish, powers FTS)
+  bodyText    String?       @map("body_text")
+  coverImage  String?       @map("cover_image")
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?     @map("published_at")
+  authorId    String        @map("author_id")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  deletedAt   DateTime?     @map("deleted_at")
+
+  author      User          @relation(fields: [authorId], references: [id])
+
+  @@index([status, publishedAt])
+  @@index([slug])
+  @@index([authorId])
+  @@map("news_articles")
+}
+
+// Full-text search index (applied via raw SQL migration):
+// ALTER TABLE news_articles
+//   ADD COLUMN body_tsv tsvector
+//   GENERATED ALWAYS AS (
+//     to_tsvector('russian', coalesce(title, '') || ' ' || coalesce(body_text, ''))
+//   ) STORED;
+// CREATE INDEX idx_news_fts ON news_articles USING GIN (body_tsv);
+
+// ─────────────────────────────────────────────
+//  SALES
+// ─────────────────────────────────────────────
+
+model Company {
+  id        String     @id @default(uuid())
+  name      String
+  inn       String?    @unique // Tax ID (ИНН)
+  industry  String?
+  notes     String?
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  purchases Purchase[]
+
+  @@index([name])
+  @@map("companies")
+}
+
+model Purchase {
+  id           String   @id @default(uuid())
+  companyId    String   @map("company_id")
+  description  String
+  amount       Decimal  @db.Decimal(15, 2)
+  currency     String   @default("RUB")
+  purchaseDate DateTime       @map("purchase_date")
+  status       PurchaseStatus @default(PENDING)
+  notes        String?
+  createdById  String   @map("created_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  company     Company  @relation(fields: [companyId], references: [id])
+  createdBy   User     @relation(fields: [createdById], references: [id])
+
+  @@index([companyId])
+  @@index([purchaseDate])
+  @@index([status])
+  @@map("purchases")
+}
+
+// ─────────────────────────────────────────────
+//  AUDIT LOG
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  timestamp      DateTime @default(now())
+  // Nullable: system events have no actor
+  actorId        String?  @map("actor_id")
+  actorIp        String?  @map("actor_ip")
+  actorUserAgent String?          @map("actor_user_agent")
+  action         AuditAction
+  resourceType   AuditResourceType @map("resource_type")
+  resourceId     String?           @map("resource_id")
+  // JSONB snapshots — secrets/hashes are stripped before storing
+  beforeSnapshot Json?             @map("before_snapshot")
+  afterSnapshot  Json?             @map("after_snapshot")
+  status         AuditLogStatus    @default(SUCCESS)
+  metadata       Json?
+
+  // Soft FK — audit logs must survive actor deletion
+  actor          User?    @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}

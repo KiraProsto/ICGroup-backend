@@ -1,0 +1,129 @@
+services:
+  # ─────────────────────────────────────────────
+  #  Application (dev with hot reload)
+  # ─────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      target: development
+    container_name: icgroup-api
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-icgroup}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-icgroup}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme_redis}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-changeme}
+      MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-content-images}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - icgroup-net
+
+  # ─────────────────────────────────────────────
+  #  PostgreSQL 16
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: icgroup-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-icgroup}
+      POSTGRES_USER: ${POSTGRES_USER:-icgroup}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "${POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-icgroup} -d ${POSTGRES_DB:-icgroup}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - icgroup-net
+
+  # ─────────────────────────────────────────────
+  #  Redis 7 with AOF persistence
+  #  AOF is mandatory: refresh tokens and BullMQ
+  #  jobs must survive a Redis restart.
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: icgroup-redis
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-changeme_redis}
+      --appendonly yes
+      --appendfsync everysec
+      --auto-aof-rewrite-percentage 100
+      --auto-aof-rewrite-min-size 64mb
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme_redis}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - icgroup-net
+
+  # ─────────────────────────────────────────────
+  #  MinIO — S3-compatible object storage
+  #  Used for content images (news, pages)
+  # ─────────────────────────────────────────────
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    container_name: icgroup-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-changeme}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console → http://localhost:9001
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - icgroup-net
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  miniodata:
+    driver: local
+
+networks:
+  icgroup-net:
+    driver: bridge
