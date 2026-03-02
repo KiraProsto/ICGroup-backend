@@ -68,11 +68,30 @@
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": [
-        "ts-jest",
+        "@swc/jest",
         {
-          "tsconfig": "tsconfig.json"
+          "jsc": {
+            "parser": {
+              "syntax": "typescript",
+              "decorators": true,
+              "dynamicImport": true
+            },
+            "transform": {
+              "decoratorMetadata": true,
+              "legacyDecorator": true
+            },
+            "target": "es2022",
+            "keepClassNames": true
+          },
+          "module": {
+            "type": "commonjs"
+          },
+          "sourceMaps": true
         }
       ]
+    },
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
@@ -87,6 +106,7 @@
     "@nestjs/testing": "^11.1.14",
     "@swc/cli": "^0.7.10",
     "@swc/core": "^1.10.7",
+    "@swc/jest": "^0.2.39",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.19.13",

@@ -9,6 +9,7 @@ import authConfig from './config/auth.config.js';
 import storageConfig from './config/storage.config.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { PrismaModule } from './prisma/prisma.module.js';
 
 @Module({
   imports: [
@@ -34,6 +35,9 @@ import { AppService } from './app.service.js';
         MINIO_ACCESS_KEY: Joi.string().required(),
         MINIO_SECRET_KEY: Joi.string().required(),
         MINIO_BUCKET_CONTENT: Joi.string().default('content-images'),
+        DB_POOL_MAX: Joi.number().integer().min(1).max(100).default(10),
+        DB_POOL_CONNECT_TIMEOUT_MS: Joi.number().integer().default(3000),
+        DB_POOL_IDLE_TIMEOUT_MS: Joi.number().integer().default(10000),
         THROTTLE_TTL: Joi.number().default(60),
         THROTTLE_LIMIT: Joi.number().default(120),
         THROTTLE_LOGIN_TTL: Joi.number().default(60),
@@ -61,9 +65,12 @@ import { AppService } from './app.service.js';
       ],
     }),
 
+    // ── Database (global — available to all feature modules) ───────
+    PrismaModule,
+
     // Feature modules will be added here in subsequent tasks:
     // AuthModule, UsersModule, ContentModule, SalesModule,
-    // AuditModule, PublicApiModule, PrismaModule
+    // AuditModule, PublicApiModule
   ],
   controllers: [AppController],
   providers: [AppService],
