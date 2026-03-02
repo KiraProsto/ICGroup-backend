@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import Joi from 'joi';
 import appConfig from './config/app.config.js';
@@ -19,18 +19,25 @@ import { AppService } from './app.service.js';
       validationSchema: Joi.object({
         NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
         PORT: Joi.number().default(3000),
+        CORS_ORIGINS: Joi.string().default('http://localhost:5173'),
         DATABASE_URL: Joi.string().required(),
         REDIS_HOST: Joi.string().default('localhost'),
         REDIS_PORT: Joi.number().default(6379),
+        REDIS_PASSWORD: Joi.string().optional(),
         JWT_ACCESS_SECRET: Joi.string().min(32).required(),
         JWT_REFRESH_SECRET: Joi.string().min(32).required(),
         JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
         JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
         MINIO_ENDPOINT: Joi.string().default('localhost'),
         MINIO_PORT: Joi.number().default(9000),
+        MINIO_USE_SSL: Joi.boolean().default(false),
         MINIO_ACCESS_KEY: Joi.string().required(),
         MINIO_SECRET_KEY: Joi.string().required(),
         MINIO_BUCKET_CONTENT: Joi.string().default('content-images'),
+        THROTTLE_TTL: Joi.number().default(60),
+        THROTTLE_LIMIT: Joi.number().default(120),
+        THROTTLE_LOGIN_TTL: Joi.number().default(60),
+        THROTTLE_LOGIN_LIMIT: Joi.number().default(5),
       }),
       validationOptions: {
         abortEarly: false, // report all validation errors at once
@@ -39,11 +46,17 @@ import { AppService } from './app.service.js';
 
     // ── Rate limiting (global) ─────────────────────────────
     ThrottlerModule.forRootAsync({
-      useFactory: () => [
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => [
         {
           name: 'global',
-          ttl: parseInt(process.env['THROTTLE_TTL'] ?? '60') * 1000,
-          limit: parseInt(process.env['THROTTLE_LIMIT'] ?? '120'),
+          ttl: config.get<number>('THROTTLE_TTL', 60) * 1000,
+          limit: config.get<number>('THROTTLE_LIMIT', 120),
+        },
+        {
+          name: 'login',
+          ttl: config.get<number>('THROTTLE_LOGIN_TTL', 60) * 1000,
+          limit: config.get<number>('THROTTLE_LOGIN_LIMIT', 5),
         },
       ],
     }),

@@ -17,6 +17,3 @@ test
 .eslintrc*
 eslint.config.*
 .prettierrc*
-.swcrc
-tsconfig*.json
-nest-cli.json

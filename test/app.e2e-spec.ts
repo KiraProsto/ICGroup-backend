@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
+import { configureApp } from '../src/app.setup.js';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication;
@@ -12,6 +13,7 @@ describe('AppController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    configureApp(app);
     await app.init();
   });
 
@@ -19,9 +21,9 @@ describe('AppController (e2e)', () => {
     await app.close();
   });
 
-  it('GET / — returns API info', () => {
+  it('GET /api/v1 — returns API info', () => {
     return request(app.getHttpServer())
-      .get('/api')
+      .get('/api/v1')
       .expect(200)
       .expect((res) => {
         expect(res.body.name).toBe('ICGroup API');

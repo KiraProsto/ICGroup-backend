@@ -37,6 +37,44 @@ enum PageType {
   ABOUT
 }
 
+enum SectionType {
+  HERO
+  FEATURE_GRID
+  TESTIMONIALS
+  CTA
+  TEXT
+  GALLERY
+}
+
+enum PurchaseStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PUBLISH
+  ARCHIVE
+}
+
+enum AuditResourceType {
+  User
+  Page
+  NewsArticle
+  Company
+  Purchase
+}
+
+enum AuditLogStatus {
+  SUCCESS
+  FAILURE
+}
+
 // ─────────────────────────────────────────────
 //  USERS & AUTH
 // ─────────────────────────────────────────────
@@ -81,11 +119,11 @@ model Page {
 }
 
 model PageSection {
-  id     String @id @default(uuid())
-  pageId String @map("page_id")
-  type   String // "hero" | "feature-grid" | "testimonials" | etc.
+  id     String      @id @default(uuid())
+  pageId String      @map("page_id")
+  type   SectionType // hero, feature-grid, testimonials, etc.
   order  Int
-  data   Json   // JSONB — variable content payload, validated by Zod per type
+  data   Json        // JSONB — variable content payload, validated by Zod per type
 
   page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
 
@@ -157,9 +195,8 @@ model Purchase {
   description  String
   amount       Decimal  @db.Decimal(15, 2)
   currency     String   @default("RUB")
-  purchaseDate DateTime @map("purchase_date")
-  // pending | confirmed | cancelled
-  status       String   @default("pending")
+  purchaseDate DateTime       @map("purchase_date")
+  status       PurchaseStatus @default(PENDING)
   notes        String?
   createdById  String   @map("created_by_id")
   createdAt    DateTime @default(now()) @map("created_at")
@@ -184,17 +221,14 @@ model AuditLog {
   // Nullable: system events have no actor
   actorId        String?  @map("actor_id")
   actorIp        String?  @map("actor_ip")
-  actorUserAgent String?  @map("actor_user_agent")
-  // CREATE | UPDATE | DELETE | LOGIN | LOGOUT | PUBLISH | ARCHIVE
-  action         String
-  // User | Page | NewsArticle | Company | Purchase
-  resourceType   String   @map("resource_type")
-  resourceId     String?  @map("resource_id")
+  actorUserAgent String?          @map("actor_user_agent")
+  action         AuditAction
+  resourceType   AuditResourceType @map("resource_type")
+  resourceId     String?           @map("resource_id")
   // JSONB snapshots — secrets/hashes are stripped before storing
-  beforeSnapshot Json?    @map("before_snapshot")
-  afterSnapshot  Json?    @map("after_snapshot")
-  // success | failure
-  status         String   @default("success")
+  beforeSnapshot Json?             @map("before_snapshot")
+  afterSnapshot  Json?             @map("after_snapshot")
+  status         AuditLogStatus    @default(SUCCESS)
   metadata       Json?
 
   // Soft FK — audit logs must survive actor deletion

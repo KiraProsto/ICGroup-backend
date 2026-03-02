@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json') as { version: string };
 
 @Injectable()
 export class AppService {
   getInfo() {
     return {
       name: 'ICGroup API',
-      version: '1.0.0',
+      version,
       status: 'ok',
     };
   }
