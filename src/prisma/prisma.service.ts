@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 import { PrismaClient } from '../generated/prisma/client.js';
 
 /**
@@ -16,20 +17,44 @@ type PrismaClientInstance = InstanceType<typeof PrismaClient>;
  * Architecture notes (Prisma v7):
  * - Uses PrismaPg driver adapter (@prisma/adapter-pg) — Rust query engine is
  *   replaced by a WASM compiler in v7; driver adapters are mandatory.
+ * - A pg.Pool is constructed explicitly so connection-pool settings are
+ *   tunable via env vars (DB_POOL_MAX, DB_POOL_CONNECT_TIMEOUT_MS,
+ *   DB_POOL_IDLE_TIMEOUT_MS) without code changes.
+ * - Pool errors are forwarded to the NestJS logger instead of crashing the
+ *   process silently.
  * - Connects on module init, disconnects on module destroy (graceful shutdown).
- * - All modules that need DB access inject PrismaService and call model
- *   accessors directly (e.g. `this.prisma.user.findUnique(...)`).
  * - PrismaClient is held via composition, not inheritance, to stay compatible
  *   with Prisma v7's factory-based class generation.
  */
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
+  private readonly pool: Pool;
   private readonly prisma: PrismaClientInstance;
 
   constructor(private readonly configService: ConfigService) {
-    const url = this.configService.getOrThrow<string>('DATABASE_URL');
-    const adapter = new PrismaPg({ connectionString: url });
+    // Use the registered namespace instead of the raw env key so this stays
+    // consistent with every other service in the project.
+    const url = this.configService.getOrThrow<string>('database.url');
+
+    this.pool = new Pool({
+      connectionString: url,
+      max: this.configService.get<number>('database.poolMax', 10),
+      connectionTimeoutMillis: this.configService.get<number>(
+        'database.poolConnectTimeoutMs',
+        3_000,
+      ),
+      idleTimeoutMillis: this.configService.get<number>('database.poolIdleTimeoutMs', 10_000),
+    });
+
+    // Forward unexpected pool-level errors to the structured logger.
+    // Without this listener Node.js would emit an unhandled 'error' event
+    // and crash the process.
+    this.pool.on('error', (err: Error) => {
+      this.logger.error('Unexpected pg pool error', err.stack);
+    });
+
+    const adapter = new PrismaPg(this.pool);
     this.prisma = new PrismaClient({ adapter }) as PrismaClientInstance;
   }
 
@@ -41,7 +66,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    // Prisma must be disconnected before the pool is closed so in-flight
+    // queries are drained cleanly.
     await this.prisma.$disconnect();
+    await this.pool.end();
     this.logger.log('Database connection closed');
   }
 

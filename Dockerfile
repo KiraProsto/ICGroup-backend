@@ -20,7 +20,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Generate Prisma client
-RUN npx prisma generate 2>/dev/null || true
+RUN npx prisma generate
 
 EXPOSE 3000
 CMD ["npm", "run", "start:dev"]
