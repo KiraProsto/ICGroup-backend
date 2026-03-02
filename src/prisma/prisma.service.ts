@@ -32,6 +32,12 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly pool: Pool;
   private readonly prisma: PrismaClientInstance;
 
+  // Bound once in the constructor — no repeated allocation on every call,
+  // and stable references make them easy to spy on in tests.
+  readonly $transaction: PrismaClientInstance['$transaction'];
+  readonly $queryRaw: PrismaClientInstance['$queryRaw'];
+  readonly $executeRaw: PrismaClientInstance['$executeRaw'];
+
   constructor(private readonly configService: ConfigService) {
     // Use the registered namespace instead of the raw env key so this stays
     // consistent with every other service in the project.
@@ -56,6 +62,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
     const adapter = new PrismaPg(this.pool);
     this.prisma = new PrismaClient({ adapter }) as PrismaClientInstance;
+
+    this.$transaction = this.prisma.$transaction.bind(this.prisma);
+    this.$queryRaw = this.prisma.$queryRaw.bind(this.prisma);
+    this.$executeRaw = this.prisma.$executeRaw.bind(this.prisma);
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
@@ -67,10 +77,27 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     // Prisma must be disconnected before the pool is closed so in-flight
-    // queries are drained cleanly.
-    await this.prisma.$disconnect();
-    await this.pool.end();
-    this.logger.log('Database connection closed');
+    // queries are drained cleanly. Each step is guarded independently so a
+    // failure in $disconnect never prevents the pool from being closed —
+    // leaving unclosed connections would prevent the process from exiting.
+    try {
+      await this.prisma.$disconnect();
+    } catch (err) {
+      this.logger.error(
+        'Error while disconnecting Prisma client during shutdown',
+        err instanceof Error ? err.stack : String(err),
+      );
+    } finally {
+      try {
+        await this.pool.end();
+        this.logger.log('Database connection closed');
+      } catch (err) {
+        this.logger.error(
+          'Error while closing pg pool during shutdown',
+          err instanceof Error ? err.stack : String(err),
+        );
+      }
+    }
   }
 
   // ── Model accessors ─────────────────────────────────────────────────────────
@@ -104,19 +131,5 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   get auditLog(): PrismaClientInstance['auditLog'] {
     return this.prisma.auditLog;
-  }
-
-  // ── Transaction & raw-query helpers ─────────────────────────────────────────
-
-  get $transaction(): PrismaClientInstance['$transaction'] {
-    return this.prisma.$transaction.bind(this.prisma);
-  }
-
-  get $queryRaw(): PrismaClientInstance['$queryRaw'] {
-    return this.prisma.$queryRaw.bind(this.prisma);
-  }
-
-  get $executeRaw(): PrismaClientInstance['$executeRaw'] {
-    return this.prisma.$executeRaw.bind(this.prisma);
   }
 }

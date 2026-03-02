@@ -5,12 +5,15 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client.js';
 import { PrismaService } from './prisma.service.js';
 
-// Explicit factory functions are required for these three mocks:
-//  - '../generated/prisma/client.js' uses `import.meta.url` (ESM) which
-//    cannot be parsed by ts-jest in CJS mode — the factory prevents Jest
-//    from ever reading the real file.
-//  - Providing factories for all three keeps mock setup symmetric and avoids
-//    ts-jest trying to auto-analyse ESM output from @prisma/adapter-pg.
+// Explicit factory functions are required for these three mocks when running
+// Jest with @swc/jest:
+//  - '../generated/prisma/client.js' is ESM and uses `import.meta.url`, which
+//    causes issues if Jest/@swc/jest try to load or transform the real Prisma
+//    client during auto-mocking. The factory ensures the real file is never
+//    evaluated.
+//  - Providing factories for all three keeps the mock setup symmetric and
+//    avoids @swc/jest attempting to transform or analyse the actual Prisma /
+//    pg implementations, which can introduce ESM/CJS edge cases in tests.
 jest.mock('pg', () => ({ Pool: jest.fn() }));
 jest.mock('@prisma/adapter-pg', () => ({ PrismaPg: jest.fn() }));
 jest.mock('../generated/prisma/client.js', () => ({ PrismaClient: jest.fn() }));
@@ -105,7 +108,7 @@ describe('PrismaService', () => {
   });
 
   describe('onModuleDestroy', () => {
-    it('should call $disconnect before pool.end', async () => {
+    it('should call $disconnect before pool.end on happy path', async () => {
       const callOrder: string[] = [];
       mockPrismaInstance.$disconnect.mockImplementation(() => {
         callOrder.push('disconnect');
@@ -120,6 +123,22 @@ describe('PrismaService', () => {
 
       expect(callOrder).toEqual(['disconnect', 'pool.end']);
     });
+
+    it('should still close the pool even if $disconnect throws', async () => {
+      mockPrismaInstance.$disconnect.mockRejectedValue(new Error('Prisma disconnect failed'));
+      mockPoolInstance.end.mockResolvedValue(undefined);
+
+      // Must not propagate — shutdown errors are logged, not rethrown.
+      await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+      expect(mockPoolInstance.end).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not propagate pool.end errors', async () => {
+      mockPrismaInstance.$disconnect.mockResolvedValue(undefined);
+      mockPoolInstance.end.mockRejectedValue(new Error('Pool close failed'));
+
+      await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+    });
   });
 
   // ── Model accessors ────────────────────────────────────────────────────────
@@ -129,6 +148,24 @@ describe('PrismaService', () => {
       'should expose the %s delegate',
       (accessor) => {
         expect(service[accessor as keyof PrismaService]).toBeDefined();
+      },
+    );
+  });
+
+  // ── Raw-query helpers ─────────────────────────────────────────────────────
+
+  describe('raw-query helpers', () => {
+    it.each(['$transaction', '$queryRaw', '$executeRaw'])(
+      '%s should be a stable bound reference to the prisma client method',
+      (method) => {
+        // Same reference on repeated access (bound once in constructor).
+        expect(service[method as keyof PrismaService]).toBe(service[method as keyof PrismaService]);
+        // Delegates to the underlying mock when called.
+        const helper = service[method as keyof PrismaService] as (...a: unknown[]) => unknown;
+        helper();
+        expect(mockPrismaInstance[method as keyof typeof mockPrismaInstance]).toHaveBeenCalledTimes(
+          1,
+        );
       },
     );
   });
