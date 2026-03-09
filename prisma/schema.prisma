@@ -94,7 +94,6 @@ model User {
   purchases    Purchase[]
   auditLogs    AuditLog[]
 
-  @@index([email])
   @@index([role])
   @@map("users")
 }
@@ -112,8 +111,8 @@ model Page {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
-  sections    PageSection[]
-  author      User          @relation(fields: [createdById], references: [id])
+  sections PageSection[]
+  author   User          @relation(fields: [createdById], references: [id])
 
   @@map("pages")
 }
@@ -123,9 +122,9 @@ model PageSection {
   pageId String      @map("page_id")
   type   SectionType // hero, feature-grid, testimonials, etc.
   order  Int
-  data   Json        // JSONB — variable content payload, validated by Zod per type
+  data   Json // JSONB — variable content payload, validated by Zod per type
 
-  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
 
   @@index([pageId, order])
   @@map("page_sections")
@@ -154,10 +153,9 @@ model NewsArticle {
   updatedAt   DateTime      @updatedAt @map("updated_at")
   deletedAt   DateTime?     @map("deleted_at")
 
-  author      User          @relation(fields: [authorId], references: [id])
+  author User @relation(fields: [authorId], references: [id])
 
   @@index([status, publishedAt])
-  @@index([slug])
   @@index([authorId])
   @@map("news_articles")
 }
@@ -175,13 +173,13 @@ model NewsArticle {
 // ─────────────────────────────────────────────
 
 model Company {
-  id        String     @id @default(uuid())
+  id        String   @id @default(uuid())
   name      String
-  inn       String?    @unique // Tax ID (ИНН)
+  inn       String?  @unique // Tax ID (ИНН)
   industry  String?
   notes     String?
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   purchases Purchase[]
 
@@ -190,20 +188,20 @@ model Company {
 }
 
 model Purchase {
-  id           String   @id @default(uuid())
-  companyId    String   @map("company_id")
+  id           String         @id @default(uuid())
+  companyId    String         @map("company_id")
   description  String
-  amount       Decimal  @db.Decimal(15, 2)
-  currency     String   @default("RUB")
+  amount       Decimal        @db.Decimal(15, 2)
+  currency     String         @default("RUB")
   purchaseDate DateTime       @map("purchase_date")
   status       PurchaseStatus @default(PENDING)
   notes        String?
-  createdById  String   @map("created_by_id")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdById  String         @map("created_by_id")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
 
-  company     Company  @relation(fields: [companyId], references: [id])
-  createdBy   User     @relation(fields: [createdById], references: [id])
+  company   Company @relation(fields: [companyId], references: [id])
+  createdBy User    @relation(fields: [createdById], references: [id])
 
   @@index([companyId])
   @@index([purchaseDate])
@@ -216,12 +214,12 @@ model Purchase {
 // ─────────────────────────────────────────────
 
 model AuditLog {
-  id             String   @id @default(uuid())
-  timestamp      DateTime @default(now())
+  id             String            @id @default(uuid())
+  timestamp      DateTime          @default(now())
   // Nullable: system events have no actor
-  actorId        String?  @map("actor_id")
-  actorIp        String?  @map("actor_ip")
-  actorUserAgent String?          @map("actor_user_agent")
+  actorId        String?           @map("actor_id")
+  actorIp        String?           @map("actor_ip")
+  actorUserAgent String?           @map("actor_user_agent")
   action         AuditAction
   resourceType   AuditResourceType @map("resource_type")
   resourceId     String?           @map("resource_id")
@@ -232,7 +230,7 @@ model AuditLog {
   metadata       Json?
 
   // Soft FK — audit logs must survive actor deletion
-  actor          User?    @relation(fields: [actorId], references: [id])
+  actor User? @relation(fields: [actorId], references: [id])
 
   @@index([actorId])
   @@index([resourceType, resourceId])

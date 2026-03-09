@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import Joi from 'joi';
 import appConfig from './config/app.config.js';
 import databaseConfig from './config/database.config.js';
@@ -73,6 +74,11 @@ import { PrismaModule } from './prisma/prisma.module.js';
     // AuditModule, PublicApiModule
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Apply rate limiting globally to every route in the application.
+    // Per-endpoint overrides use @Throttle({ login: { ... } }) on the handler.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}
