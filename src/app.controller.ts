@@ -2,8 +2,9 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 import { AppService } from './app.service.js';
-import { DbHealthIndicator } from './modules/health/index.js';
-import { RedisHealthIndicator } from './modules/health/index.js';
+import { DbHealthIndicator } from './modules/health/db-health.indicator.js';
+import { RedisHealthIndicator } from './modules/health/redis-health.indicator.js';
+import { Public } from './modules/auth/decorators/public.decorator.js';
 
 @ApiTags('meta')
 @Controller()
@@ -16,6 +17,7 @@ export class AppController {
   ) {}
 
   @Get()
+  @Public()
   @ApiOperation({ summary: 'Root — API info' })
   getRoot() {
     return this.appService.getInfo();
@@ -27,6 +29,7 @@ export class AppController {
    * Returns 200 only when both PostgreSQL and Redis are reachable.
    */
   @Get('health')
+  @Public()
   @ApiExcludeEndpoint()
   @HealthCheck()
   getHealth() {

@@ -12,8 +12,9 @@ import storageConfig from './config/storage.config.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { PrismaModule } from './prisma/prisma.module.js';
-import { RedisModule, REDIS_CLIENT } from './redis/index.js';
-import { HealthModule } from './modules/health/index.js';
+import { RedisModule, REDIS_CLIENT } from './redis/redis.module.js';
+import { HealthModule } from './modules/health/health.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 import { RedisThrottlerStorage } from './common/throttler-storage.js';
 
 @Module({
@@ -94,6 +95,9 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
 
     // ── Health checks ──────────────────────────────────────
     HealthModule,
+
+    // ── Auth (JWT + refresh token + RBAC guard) ────────────
+    AuthModule,
 
     // Feature modules will be added here in subsequent tasks:
     // AuthModule, UsersModule, ContentModule, SalesModule,

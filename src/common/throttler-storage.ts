@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ThrottlerStorage } from '@nestjs/throttler';
 import { Redis } from 'ioredis';
-import { REDIS_CLIENT } from '../redis/index.js';
+import { REDIS_CLIENT } from '../redis/redis.module.js';
 
 /** Shape returned by ThrottlerStorage.increment (matches ThrottlerStorageRecord). */
 type ThrottlerStorageRecord = {

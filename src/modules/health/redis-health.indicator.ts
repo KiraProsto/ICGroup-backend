@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { HealthIndicatorService } from '@nestjs/terminus';
 import { Redis } from 'ioredis';
-import { REDIS_CLIENT } from '../../redis/index.js';
+import { REDIS_CLIENT } from '../../redis/redis.module.js';
 
 /**
  * Verifies the Redis connection is alive by issuing a PING command.
