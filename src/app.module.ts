@@ -14,6 +14,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { RedisModule, REDIS_CLIENT } from './redis/redis.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { CaslModule } from './modules/casl/casl.module.js';
 import { RedisThrottlerStorage } from './common/throttler-storage.js';
 
 @Module({
@@ -95,8 +96,11 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
     // ── Health checks ──────────────────────────────────────
     HealthModule,
 
-    // ── Auth (JWT + refresh token + RBAC guard) ────────────
+    // ── Auth (JWT + refresh token) ─────────────────────────
     AuthModule,
+
+    // ── RBAC (CASL PoliciesGuard — runs after JwtAuthGuard) ─
+    CaslModule,
 
     // Feature modules will be added here in subsequent tasks:
     // AuthModule, UsersModule, ContentModule, SalesModule,
