@@ -1,10 +1,18 @@
 import { Controller, Get } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
+import {
+  ApiExcludeEndpoint,
+  ApiOkResponse,
+  ApiOperation,
+  ApiServiceUnavailableResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 import { AppService } from './app.service.js';
 import { DbHealthIndicator } from './modules/health/db-health.indicator.js';
 import { RedisHealthIndicator } from './modules/health/redis-health.indicator.js';
 import { Public } from './modules/auth/decorators/public.decorator.js';
+import { AppInfoDto } from './common/dto/app-info.dto.js';
+import { ApiErrorResponseDto, ApiResponseDto } from './common/dto/api-response.dto.js';
 
 @ApiTags('meta')
 @Controller()
@@ -19,7 +27,8 @@ export class AppController {
   @Get()
   @Public()
   @ApiOperation({ summary: 'Root — API info' })
-  getRoot() {
+  @ApiOkResponse({ type: ApiResponseDto(AppInfoDto) })
+  getRoot(): AppInfoDto {
     return this.appService.getInfo();
   }
 
@@ -31,6 +40,7 @@ export class AppController {
   @Get('health')
   @Public()
   @ApiExcludeEndpoint()
+  @ApiServiceUnavailableResponse({ type: ApiErrorResponseDto })
   @HealthCheck()
   getHealth() {
     return this.health.check([

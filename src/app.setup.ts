@@ -1,4 +1,6 @@
 import { INestApplication, RequestMethod, ValidationPipe, VersioningType } from '@nestjs/common';
+import { AllExceptionsFilter } from './common/filters/http-exception.filter.js';
+import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor.js';
 
 /**
  * Applies the shared middleware/pipe/routing configuration to a NestJS app
@@ -12,6 +14,8 @@ export function configureApp(app: INestApplication): void {
     exclude: [{ path: 'health', method: RequestMethod.GET }],
   });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+
+  // ── Validation ────────────────────────────────────────────
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -19,4 +23,10 @@ export function configureApp(app: INestApplication): void {
       transform: true,
     }),
   );
+
+  // ── Unified response envelope { success, data, meta } ─────
+  app.useGlobalInterceptors(new TransformResponseInterceptor());
+
+  // ── Unified error envelope { success, error, meta } ───────
+  app.useGlobalFilters(new AllExceptionsFilter());
 }
