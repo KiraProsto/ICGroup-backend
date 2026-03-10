@@ -23,6 +23,10 @@ export class LoginResponseDto extends AuthTokensResponseDto {
 }
 
 export class CurrentUserProfileDto extends AuthUserDto {
-  @ApiProperty({ example: '2026-03-10T10:00:00.000Z' })
-  createdAt!: Date;
+  @ApiProperty({
+    example: '2026-03-10T10:00:00.000Z',
+    type: String,
+    format: 'date-time',
+  })
+  createdAt!: string;
 }

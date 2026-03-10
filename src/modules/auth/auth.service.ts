@@ -137,6 +137,11 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    return record;
+    return {
+      id: record.id,
+      email: record.email,
+      role: record.role,
+      createdAt: record.createdAt.toISOString(),
+    };
   }
 }

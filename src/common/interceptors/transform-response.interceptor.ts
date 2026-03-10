@@ -40,9 +40,12 @@ export type ApiSuccessResponse<T> = {
   meta: { timestamp: string; path: string } & Partial<PaginationMeta>;
 };
 
-// Intersection type used as the public Observable emission type.
-// The interceptor emits either the raw value (passthrough) or a wrapped envelope.
-type Wrapped<T> = T | ApiSuccessResponse<unknown>;
+type UnwrappedData<T> = T extends PaginatedResult<infer U> ? U[] : T;
+
+// Union type used as the public Observable emission type.
+// The interceptor emits either the raw value (passthrough) or a wrapped envelope
+// whose `data` field preserves the original payload type (unwrapping paginated results).
+type Wrapped<T> = T | ApiSuccessResponse<UnwrappedData<T>>;
 
 function isPaginatedResult(value: unknown): value is PaginatedResult<unknown> {
   return (
@@ -70,7 +73,7 @@ export class TransformResponseInterceptor<T> implements NestInterceptor<T, Wrapp
     const res = context.switchToHttp().getResponse<Response>();
 
     return next.handle().pipe(
-      map((data) => {
+      map((data): Wrapped<T> => {
         // 204 No Content — do not wrap; body must remain empty.
         if (res.statusCode === 204) return data;
 
@@ -80,18 +83,20 @@ export class TransformResponseInterceptor<T> implements NestInterceptor<T, Wrapp
         };
 
         if (isPaginatedResult(data)) {
+          // TypeScript cannot narrow the conditional UnwrappedData<T> here —
+          // the cast is safe because isPaginatedResult guarantees T extends PaginatedResult<U>.
           return {
             success: true as const,
             data: data.data,
             meta: { ...baseMeta, ...data.meta },
-          };
+          } as unknown as Wrapped<T>;
         }
 
         return {
           success: true as const,
           data,
           meta: baseMeta,
-        };
+        } as unknown as Wrapped<T>;
       }),
     );
   }
