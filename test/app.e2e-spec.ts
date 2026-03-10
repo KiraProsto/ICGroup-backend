@@ -35,4 +35,18 @@ describe('AppController (e2e)', () => {
         });
       });
   });
+
+  it('GET missing route — returns wrapped error with sanitized path metadata', () => {
+    return request(app.getHttpServer())
+      .get('/api/v1/does-not-exist?token=secret')
+      .expect(404)
+      .expect((res) => {
+        expect(res.body.success).toBe(false);
+        expect(res.body.error.code).toBe(404);
+        expect(res.body.meta).toMatchObject({
+          path: '/api/v1/does-not-exist',
+          timestamp: expect.any(String),
+        });
+      });
+  });
 });

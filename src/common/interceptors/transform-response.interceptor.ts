@@ -3,6 +3,12 @@ import type { Request, Response } from 'express';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
+const PAGINATED_RESULT_MARKER = Symbol('paginated-result');
+
+function getRequestPath(request: Request): string {
+  return request.path;
+}
+
 /**
  * Returned by paginated service methods so the interceptor can spread
  * pagination metadata into the top-level `meta` field.
@@ -15,8 +21,17 @@ export interface PaginationMeta {
 }
 
 export interface PaginatedResult<T> {
+  [PAGINATED_RESULT_MARKER]: true;
   data: T[];
   meta: PaginationMeta;
+}
+
+export function paginatedResult<T>(data: T[], meta: PaginationMeta): PaginatedResult<T> {
+  return {
+    [PAGINATED_RESULT_MARKER]: true,
+    data,
+    meta,
+  };
 }
 
 export type ApiSuccessResponse<T> = {
@@ -33,11 +48,8 @@ function isPaginatedResult(value: unknown): value is PaginatedResult<unknown> {
   return (
     typeof value === 'object' &&
     value !== null &&
-    'data' in value &&
-    Array.isArray((value as PaginatedResult<unknown>).data) &&
-    'meta' in value &&
-    typeof (value as PaginatedResult<unknown>).meta === 'object' &&
-    (value as PaginatedResult<unknown>).meta !== null
+    PAGINATED_RESULT_MARKER in value &&
+    (value as PaginatedResult<unknown>)[PAGINATED_RESULT_MARKER] === true
   );
 }
 
@@ -64,7 +76,7 @@ export class TransformResponseInterceptor<T> implements NestInterceptor<T, Wrapp
 
         const baseMeta = {
           timestamp: new Date().toISOString(),
-          path: req.url,
+          path: getRequestPath(req),
         };
 
         if (isPaginatedResult(data)) {

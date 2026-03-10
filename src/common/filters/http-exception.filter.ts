@@ -21,6 +21,53 @@ interface ApiErrorBody {
   };
 }
 
+interface ParsedHttpError {
+  message: string;
+  details?: unknown;
+}
+
+function getRequestPath(request: Request): string {
+  return request.path;
+}
+
+function parseHttpException(exception: HttpException): ParsedHttpError {
+  const raw = exception.getResponse();
+
+  if (typeof raw === 'string') {
+    return { message: raw };
+  }
+
+  if (typeof raw !== 'object' || raw === null) {
+    return { message: String(raw) };
+  }
+
+  const body = raw as Record<string, unknown>;
+
+  if (Array.isArray(body['message'])) {
+    const { message: validationMessages, statusCode: _statusCode, ...rest } = body;
+    const details =
+      Object.keys(rest).length > 0 ? { ...rest, messages: validationMessages } : validationMessages;
+
+    return {
+      message: 'Validation failed',
+      details,
+    };
+  }
+
+  const { message: rawMessage, statusCode: _statusCode, ...rest } = body;
+  const message =
+    typeof rawMessage === 'string'
+      ? rawMessage
+      : typeof body['error'] === 'string'
+        ? body['error']
+        : String(exception.getStatus());
+
+  return {
+    message,
+    ...(Object.keys(rest).length > 0 ? { details: rest } : {}),
+  };
+}
+
 /**
  * Catches every thrown exception (HTTP or otherwise) and serialises it into
  * the unified error envelope:
@@ -45,32 +92,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    let message: string;
-    let details: unknown;
+    let parsedError: ParsedHttpError;
 
     if (exception instanceof HttpException) {
-      const raw = exception.getResponse();
-
-      if (typeof raw === 'string') {
-        message = raw;
-      } else if (typeof raw === 'object' && raw !== null) {
-        const body = raw as Record<string, unknown>;
-
-        // class-validator produces message as string[] — treat specially.
-        if (Array.isArray(body['message'])) {
-          message = 'Validation failed';
-          details = body['message'];
-        } else {
-          message = typeof body['message'] === 'string' ? body['message'] : String(status);
-        }
-      } else {
-        message = String(raw);
-      }
+      parsedError = parseHttpException(exception);
     } else {
       // Never leak internals to clients; log full detail server-side.
-      message = 'Internal server error';
+      parsedError = { message: 'Internal server error' };
       this.logger.error(
-        `Unhandled exception [${request.method} ${request.url}]`,
+        `Unhandled exception [${request.method} ${getRequestPath(request)}]`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
@@ -79,12 +109,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
       success: false,
       error: {
         code: status,
-        message,
-        ...(details !== undefined ? { details } : {}),
+        message: parsedError.message,
+        ...(parsedError.details !== undefined ? { details: parsedError.details } : {}),
       },
       meta: {
         timestamp: new Date().toISOString(),
-        path: request.url,
+        path: getRequestPath(request),
       },
     };
 

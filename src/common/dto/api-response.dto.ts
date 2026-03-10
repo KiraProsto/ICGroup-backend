@@ -39,8 +39,15 @@ export class ApiErrorDetailDto {
   @ApiProperty({ example: 'Validation failed' })
   message!: string;
 
-  @ApiProperty({ required: false, type: [String] })
-  details?: string[];
+  @ApiProperty({
+    required: false,
+    description: 'Optional structured details preserved from the original exception payload.',
+    oneOf: [
+      { type: 'array', items: { type: 'string' } },
+      { type: 'object', additionalProperties: true },
+    ],
+  })
+  details?: string[] | Record<string, unknown>;
 }
 
 export class ApiErrorResponseDto {

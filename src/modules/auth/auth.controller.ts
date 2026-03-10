@@ -9,16 +9,28 @@ import {
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiCookieAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
-import { LoginResponseDto, AuthTokensResponseDto } from './dto/auth-response.dto.js';
+import {
+  AuthTokensResponseDto,
+  CurrentUserProfileDto,
+  LoginResponseDto,
+} from './dto/auth-response.dto.js';
 import { Public } from './decorators/public.decorator.js';
 import { CurrentUser, type AuthenticatedUser } from './decorators/current-user.decorator.js';
 import { Role } from '../../generated/prisma/enums.js';
 import { ConfigService } from '@nestjs/config';
+import { ApiErrorResponseDto, ApiResponseDto } from '../../common/dto/api-response.dto.js';
 
 const REFRESH_TOKEN_COOKIE = 'refresh_token';
 
@@ -52,9 +64,14 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Authenticate with email and password' })
-  @ApiResponse({ status: 200, description: 'Logged in successfully', type: LoginResponseDto })
-  @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  @ApiResponse({ status: 429, description: 'Too many login attempts' })
+  @ApiResponse({
+    status: 200,
+    description: 'Logged in successfully',
+    type: ApiResponseDto(LoginResponseDto),
+  })
+  @ApiBadRequestResponse({ description: 'Validation failed', type: ApiErrorResponseDto })
+  @ApiResponse({ status: 401, description: 'Invalid credentials', type: ApiErrorResponseDto })
+  @ApiResponse({ status: 429, description: 'Too many login attempts', type: ApiErrorResponseDto })
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
@@ -76,8 +93,16 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiCookieAuth(REFRESH_TOKEN_COOKIE)
   @ApiOperation({ summary: 'Rotate refresh token and issue new access token' })
-  @ApiResponse({ status: 200, description: 'Tokens rotated', type: AuthTokensResponseDto })
-  @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
+  @ApiResponse({
+    status: 200,
+    description: 'Tokens rotated',
+    type: ApiResponseDto(AuthTokensResponseDto),
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid or expired refresh token',
+    type: ApiErrorResponseDto,
+  })
   async refresh(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -127,9 +152,13 @@ export class AuthController {
   @Get('me')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get current authenticated user profile' })
-  @ApiResponse({ status: 200, description: 'Current user profile' })
-  @ApiResponse({ status: 401, description: 'Not authenticated' })
-  async me(@CurrentUser() user: AuthenticatedUser) {
+  @ApiResponse({
+    status: 200,
+    description: 'Current user profile',
+    type: ApiResponseDto(CurrentUserProfileDto),
+  })
+  @ApiResponse({ status: 401, description: 'Not authenticated', type: ApiErrorResponseDto })
+  async me(@CurrentUser() user: AuthenticatedUser): Promise<CurrentUserProfileDto> {
     return this.authService.getProfile(user);
   }
 }
