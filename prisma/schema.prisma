@@ -11,9 +11,10 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // url is no longer set here in Prisma v7.
-  // For migrations: connection is configured in prisma.config.ts
-  // For runtime:    PrismaPg adapter is passed to PrismaClient constructor
+  // url is intentionally absent in Prisma v7: the property is no longer
+  // supported in schema files (see https://pris.ly/d/config-datasource).
+  // Migration CLI reads the connection URL from prisma.config.ts.
+  // Runtime connection is supplied via PrismaPg adapter in PrismaService.
 }
 
 // ─────────────────────────────────────────────
@@ -206,6 +207,7 @@ model Purchase {
   @@index([companyId])
   @@index([purchaseDate])
   @@index([status])
+  @@index([createdById])
   @@map("purchases")
 }
 

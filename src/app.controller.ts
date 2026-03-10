@@ -1,11 +1,19 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
+import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 import { AppService } from './app.service.js';
+import { DbHealthIndicator } from './modules/health/index.js';
+import { RedisHealthIndicator } from './modules/health/index.js';
 
 @ApiTags('meta')
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(
+    private readonly appService: AppService,
+    private readonly health: HealthCheckService,
+    private readonly dbHealth: DbHealthIndicator,
+    private readonly redisHealth: RedisHealthIndicator,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Root — API info' })
@@ -14,12 +22,17 @@ export class AppController {
   }
 
   /**
-   * Liveness probe — excluded from the global 'api' prefix so it is
+   * Liveness/readiness probe — excluded from the global 'api' prefix so it is
    * reachable at GET /health (used by Docker HEALTHCHECK and load balancers).
+   * Returns 200 only when both PostgreSQL and Redis are reachable.
    */
   @Get('health')
   @ApiExcludeEndpoint()
-  getHealth(): { status: string } {
-    return { status: 'ok' };
+  @HealthCheck()
+  getHealth() {
+    return this.health.check([
+      () => this.dbHealth.pingCheck('database'),
+      () => this.redisHealth.pingCheck('redis'),
+    ]);
   }
 }

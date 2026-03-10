@@ -51,7 +51,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-icgroup}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     ports:
-      - "${POSTGRES_PORT:-15432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -103,8 +103,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-changeme}
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console → http://localhost:9001
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # Web console → http://localhost:9001
     volumes:
       - miniodata:/data
     healthcheck:

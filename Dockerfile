@@ -22,6 +22,9 @@ COPY . .
 # Generate Prisma client
 RUN npx prisma generate
 
+# Run as non-root — mirrors production security posture
+USER node
+
 EXPOSE 3000
 CMD ["npm", "run", "start:dev"]
 
@@ -55,8 +58,9 @@ RUN npm prune --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src/generated ./src/generated
 
-# Copy Prisma schema — required by `prisma migrate deploy` at container start
+# Copy Prisma schema and config — both required by `prisma migrate deploy`
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 
 # Copy migration entrypoint
 COPY docker-entrypoint.sh ./

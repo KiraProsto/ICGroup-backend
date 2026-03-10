@@ -48,6 +48,7 @@
     "ioredis": "^5.4.2",
     "joi": "^18.0.2",
     "passport": "^0.7.0",
+    "prisma": "^7.4.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.13.1",
     "reflect-metadata": "^0.2.2",
@@ -123,7 +124,6 @@
     "jest": "^30.2.0",
     "lint-staged": "^16.3.1",
     "prettier": "^3.4.2",
-    "prisma": "^7.4.0",
     "supertest": "^7.0.0",
     "ts-jest": "^29.4.6",
     "typescript": "^5.7.3"
