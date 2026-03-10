@@ -3,8 +3,10 @@ import type { Role } from '../../../generated/prisma/enums.js';
 /**
  * Payload embedded in the short-lived access JWT (15 min).
  * sub  — userId (UUID)
- * role — user role, embedded to avoid an extra DB round-trip in the guard
- * jti  — unique token ID (for future access-token revocation, if needed)
+ * role — user role at the time of issuance; embedded for reference but
+ *        JwtStrategy.validate() always re-fetches the role from the DB to
+ *        prevent stale-role bypasses after privilege changes.
+ * jti  — unique token ID (reserved for access-token revocation if needed)
  */
 export interface JwtAccessPayload {
   sub: string;

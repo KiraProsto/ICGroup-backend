@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { TokenService } from './token.service.js';
@@ -31,6 +32,9 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
     AuthService,
     TokenService,
     JwtStrategy,
+    // ThrottlerGuard is listed first so rate-limiting runs before the JWT guard
+    // on every request — blocking flooding before any auth/DB work begins.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     // Apply JwtAuthGuard globally — all routes require a valid access token
     // unless decorated with @Public().
     { provide: APP_GUARD, useClass: JwtAuthGuard },

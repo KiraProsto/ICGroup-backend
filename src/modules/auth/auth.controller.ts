@@ -8,7 +8,6 @@ import {
   Req,
   Res,
   UnauthorizedException,
-  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -18,8 +17,8 @@ import { LoginDto } from './dto/login.dto.js';
 import { LoginResponseDto, AuthTokensResponseDto } from './dto/auth-response.dto.js';
 import { Public } from './decorators/public.decorator.js';
 import { CurrentUser, type AuthenticatedUser } from './decorators/current-user.decorator.js';
-import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { Role } from '../../generated/prisma/enums.js';
+import { ConfigService } from '@nestjs/config';
 
 const REFRESH_TOKEN_COOKIE = 'refresh_token';
 
@@ -39,8 +38,11 @@ function refreshCookieOptions(isProd: boolean): CookieOptions {
 export class AuthController {
   private readonly isProd: boolean;
 
-  constructor(private readonly authService: AuthService) {
-    this.isProd = process.env['NODE_ENV'] === 'production';
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {
+    this.isProd = this.configService.get<string>('app.nodeEnv') === 'production';
   }
 
   // ─── POST /auth/login ────────────────────────────────────────────────────
@@ -119,7 +121,9 @@ export class AuthController {
 
   // ─── GET /auth/me ─────────────────────────────────────────────────────────
 
-  @UseGuards(JwtAuthGuard)
+  // No @Public() — protected by the global JwtAuthGuard (APP_GUARD).
+  // Do NOT add @UseGuards(JwtAuthGuard) here: the guard is already global and
+  // adding it again would cause a double DB query per request.
   @Get('me')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get current authenticated user profile' })

@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import Joi from 'joi';
 import { Redis } from 'ioredis';
 import appConfig from './config/app.config.js';
@@ -106,9 +105,8 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
   controllers: [AppController],
   providers: [
     AppService,
-    // Apply rate limiting globally to every route in the application.
-    // Per-endpoint overrides use @Throttle({ login: { ... } }) on the handler.
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // ThrottlerGuard and JwtAuthGuard are registered as APP_GUARD inside
+    // AuthModule (in that order) so rate-limiting executes before auth.
   ],
 })
 export class AppModule {}
