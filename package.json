@@ -2,7 +2,7 @@
   "name": "icgroup-backend",
   "version": "0.1.0",
   "description": "ICGroup Backend API",
-  "author": "ICGroup",
+  "author": "Mit Sudebov",
   "license": "MIT",
   "private": true,
   "type": "module",
