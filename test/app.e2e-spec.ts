@@ -21,13 +21,18 @@ describe('AppController (e2e)', () => {
     await app.close();
   });
 
-  it('GET /api/v1 — returns API info', () => {
+  it('GET /api/v1 — returns API info wrapped in success envelope', () => {
     return request(app.getHttpServer())
       .get('/api/v1')
       .expect(200)
       .expect((res) => {
-        expect(res.body.name).toBe('ICGroup API');
-        expect(res.body.status).toBe('ok');
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.name).toBe('ICGroup API');
+        expect(res.body.data.status).toBe('ok');
+        expect(res.body.meta).toMatchObject({
+          path: '/api/v1',
+          timestamp: expect.any(String),
+        });
       });
   });
 });
