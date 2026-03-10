@@ -51,6 +51,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         3_000,
       ),
       idleTimeoutMillis: this.configService.get<number>('database.poolIdleTimeoutMs', 10_000),
+      statement_timeout: this.configService.get<number>('database.statementTimeoutMs', 30_000),
     });
 
     // Forward unexpected pool-level errors to the structured logger.

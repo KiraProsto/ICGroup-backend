@@ -2,7 +2,7 @@
   "name": "icgroup-backend",
   "version": "0.1.0",
   "description": "ICGroup Backend API",
-  "author": "ICGroup",
+  "author": "Mit Sudebov",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -24,6 +24,7 @@
     "prisma:migrate": "node -r dotenv/config node_modules/prisma/build/index.js migrate dev",
     "prisma:deploy": "node -r dotenv/config node_modules/prisma/build/index.js migrate deploy",
     "prisma:studio": "node -r dotenv/config node_modules/prisma/build/index.js studio",
+    "prisma:seed": "node -r dotenv/config --import=tsx/esm prisma/seed.ts",
     "typecheck": "tsc --noEmit",
     "prepare": "husky"
   },
@@ -40,16 +41,20 @@
     "@nestjs/terminus": "^11.1.1",
     "@nestjs/throttler": "^6.2.1",
     "@prisma/adapter-pg": "^7.4.0",
+    "@prisma/client": "^7.4.2",
+    "@types/cookie-parser": "^1.4.10",
     "argon2": "^0.44.0",
     "bullmq": "^5.34.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "cookie-parser": "^1.4.7",
     "helmet": "^8.0.0",
     "ioredis": "^5.4.2",
     "joi": "^18.0.2",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.13.1",
+    "prisma": "^7.4.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "uuid": "^13.0.0"
@@ -93,6 +98,9 @@
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(uuid)/)"
+    ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
@@ -123,9 +131,9 @@
     "jest": "^30.2.0",
     "lint-staged": "^16.3.1",
     "prettier": "^3.4.2",
-    "prisma": "^7.4.0",
     "supertest": "^7.0.0",
     "ts-jest": "^29.4.6",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.3"
   }
 }
