@@ -22,13 +22,25 @@ const prisma = new PrismaClient({ adapter } as any);
 
 // ── Seed data ─────────────────────────────────────────────────────────────────
 
-const ADMIN_EMAIL = process.env['SEED_ADMIN_EMAIL'] ?? 'sudebovds@gmail.com';
-const ADMIN_PASSWORD = process.env['SEED_ADMIN_PASSWORD'] ?? '615772615772';
+const ADMIN_EMAIL = process.env['SEED_ADMIN_EMAIL'];
+const ADMIN_PASSWORD = process.env['SEED_ADMIN_PASSWORD'];
+
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  console.error(
+    'ERROR: SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD environment variables must be set.\n' +
+      'Example: SEED_ADMIN_EMAIL=admin@example.com SEED_ADMIN_PASSWORD=<strong-password> npm run prisma:seed',
+  );
+  process.exit(1);
+}
+
+// TypeScript does not narrow through process.exit — assert after the guard.
+const adminEmail: string = ADMIN_EMAIL;
+const adminPassword: string = ADMIN_PASSWORD;
 
 async function main() {
   console.log('Seeding database...');
 
-  const passwordHash = await argon2.hash(ADMIN_PASSWORD, {
+  const passwordHash = await argon2.hash(adminPassword, {
     type: argon2.argon2id,
     memoryCost: 65536,
     timeCost: 3,
@@ -36,10 +48,10 @@ async function main() {
   });
 
   const user = await prisma.user.upsert({
-    where: { email: ADMIN_EMAIL },
+    where: { email: adminEmail },
     update: { passwordHash, isActive: true, deletedAt: null },
     create: {
-      email: ADMIN_EMAIL,
+      email: adminEmail,
       passwordHash,
       role: 'SUPER_ADMIN',
       isActive: true,

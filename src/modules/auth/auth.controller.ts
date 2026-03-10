@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
@@ -18,7 +19,7 @@ import { LoginResponseDto, AuthTokensResponseDto } from './dto/auth-response.dto
 import { Public } from './decorators/public.decorator.js';
 import { CurrentUser, type AuthenticatedUser } from './decorators/current-user.decorator.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
-import { Role } from '@generated/prisma/enums.js';
+import { Role } from '../../generated/prisma/enums.js';
 
 const REFRESH_TOKEN_COOKIE = 'refresh_token';
 
@@ -119,8 +120,7 @@ export class AuthController {
   // ─── GET /auth/me ─────────────────────────────────────────────────────────
 
   @UseGuards(JwtAuthGuard)
-  @Post('me')
-  @HttpCode(HttpStatus.OK)
+  @Get('me')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get current authenticated user profile' })
   @ApiResponse({ status: 200, description: 'Current user profile' })

@@ -4,9 +4,10 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { TokenService, type IssuedTokens } from './token.service.js';
 import type { LoginDto } from './dto/login.dto.js';
 import type { AuthenticatedUser } from './decorators/current-user.decorator.js';
+import type { Role } from '../../generated/prisma/enums.js';
 
 export interface LoginResult extends IssuedTokens {
-  user: { id: string; email: string; role: string };
+  user: { id: string; email: string; role: Role };
 }
 
 /**

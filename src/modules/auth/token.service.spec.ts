@@ -19,6 +19,7 @@ const mockPipeline = {
 const mockRedis = {
   pipeline: jest.fn().mockReturnValue(mockPipeline),
   get: jest.fn(),
+  getdel: jest.fn(),
   smembers: jest.fn(),
   del: jest.fn(),
 };
@@ -98,14 +99,16 @@ describe('TokenService', () => {
       familyId: 'fam-abc',
     };
 
-    it('returns payload for a valid, allowlisted token', async () => {
+    it('returns decoded payload for a valid JWT', async () => {
       mockJwtService.verifyAsync.mockResolvedValue(payload);
-      mockRedis.get.mockResolvedValue('user-1:fam-abc');
 
       const result = await service.validateRefreshToken('valid.token');
 
       expect(result.sub).toBe('user-1');
       expect(result.jti).toBe('jti-abc');
+      // No Redis calls — only JWT verification
+      expect(mockRedis.get).not.toHaveBeenCalled();
+      expect(mockRedis.getdel).not.toHaveBeenCalled();
     });
 
     it('throws UnauthorizedException for expired JWT', async () => {
@@ -115,55 +118,56 @@ describe('TokenService', () => {
         UnauthorizedException,
       );
     });
-
-    it('throws UnauthorizedException when jti is not in allowlist (not reuse)', async () => {
-      mockJwtService.verifyAsync.mockResolvedValue(payload);
-      mockRedis.get
-        .mockResolvedValueOnce(null) // rt:{jti} — not in allowlist
-        .mockResolvedValueOnce(null); // rt-family:{familyId}:{jti} — not consumed
-
-      await expect(service.validateRefreshToken('consumed.token')).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('revokes family and throws on reuse detection', async () => {
-      mockJwtService.verifyAsync.mockResolvedValue(payload);
-      mockRedis.get
-        .mockResolvedValueOnce(null) // rt:{jti} — not in allowlist
-        .mockResolvedValueOnce('1'); // rt-family:{familyId}:{jti} — already consumed
-      mockRedis.smembers.mockResolvedValue(['other-jti']);
-
-      await expect(service.validateRefreshToken('replayed.token')).rejects.toThrow(
-        UnauthorizedException,
-      );
-      // revokeFamily should have been triggered
-      expect(mockRedis.smembers).toHaveBeenCalledWith(`rt-family-active:${payload.familyId}`);
-    });
-
-    it('throws when allowlist entry userId does not match token sub', async () => {
-      mockJwtService.verifyAsync.mockResolvedValue(payload);
-      // Allowlist stores different userId
-      mockRedis.get.mockResolvedValue('different-user:fam-abc');
-
-      await expect(service.validateRefreshToken('tampered.token')).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
   });
 
   // ─── rotateRefreshToken ───────────────────────────────────────────────────
 
   describe('rotateRefreshToken', () => {
-    it('issues new tokens and updates Redis atomically', async () => {
+    it('atomically consumes old token via GETDEL and issues new pair', async () => {
       mockJwtService.sign.mockReturnValue('new.signed.token');
+      mockRedis.getdel.mockResolvedValue('user-1:fam-1');
 
       const result = await service.rotateRefreshToken('old-jti', 'user-1', 'SUPER_ADMIN', 'fam-1');
 
+      expect(mockRedis.getdel).toHaveBeenCalledWith('rt:old-jti');
       expect(result.accessToken).toBe('new.signed.token');
       expect(result.refreshJti).not.toBe('old-jti');
-      expect(mockPipeline.del).toHaveBeenCalledWith('rt:old-jti');
       expect(mockPipeline.set).toHaveBeenCalledWith('rt-family:fam-1:old-jti', '1', 'EX', 604800);
+      expect(mockPipeline.set).toHaveBeenCalledWith(
+        expect.stringMatching(/^rt:/),
+        'user-1:fam-1',
+        'EX',
+        604800,
+      );
+    });
+
+    it('throws when GETDEL returns null and no consumed marker (race lost / expired)', async () => {
+      mockRedis.getdel.mockResolvedValue(null);
+      mockRedis.get.mockResolvedValue(null); // no consumed marker
+
+      await expect(
+        service.rotateRefreshToken('old-jti', 'user-1', 'SUPER_ADMIN', 'fam-1'),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(mockRedis.smembers).not.toHaveBeenCalled();
+    });
+
+    it('revokes family and throws when GETDEL returns null and consumed marker exists (reuse)', async () => {
+      mockRedis.getdel.mockResolvedValue(null);
+      mockRedis.get.mockResolvedValue('1'); // consumed marker present
+      mockRedis.smembers.mockResolvedValue(['other-jti']);
+
+      await expect(
+        service.rotateRefreshToken('old-jti', 'user-1', 'SUPER_ADMIN', 'fam-1'),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(mockRedis.smembers).toHaveBeenCalledWith('rt-family-active:fam-1');
+    });
+
+    it('throws when allowlist entry userId does not match token sub', async () => {
+      mockRedis.getdel.mockResolvedValue('different-user:fam-1');
+
+      await expect(
+        service.rotateRefreshToken('old-jti', 'user-1', 'SUPER_ADMIN', 'fam-1'),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 

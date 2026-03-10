@@ -7,8 +7,27 @@ import { REDIS_CLIENT } from '../../redis/redis.module.js';
 import type { Role } from '../../generated/prisma/enums.js';
 import type { JwtAccessPayload, JwtRefreshPayload } from './interfaces/jwt-payload.interface.js';
 
-/** Access token TTL constant for informational use — JWT expiry is enforced by @nestjs/jwt. */
-const REFRESH_TOKEN_TTL_S = 7 * 24 * 60 * 60; // 7 days in seconds
+/**
+ * Parses a JWT duration string (e.g. "7d", "24h", "60m", "3600s") to seconds.
+ * Keeps Redis TTLs in sync with the configured JWT expiry.
+ */
+function parseDurationToSeconds(duration: string): number {
+  const match = /^(\d+)(s|m|h|d)$/.exec(duration);
+  if (!match) throw new Error(`Unsupported duration format: "${duration}"`);
+  const value = parseInt(match[1], 10);
+  switch (match[2]) {
+    case 's':
+      return value;
+    case 'm':
+      return value * 60;
+    case 'h':
+      return value * 3600;
+    case 'd':
+      return value * 86400;
+    default:
+      throw new Error(`Unsupported duration unit: "${match[2]}"`);
+  }
+}
 
 /** Redis key helpers — centralised to prevent typos across the module. */
 function rtKey(jti: string): string {
@@ -51,6 +70,11 @@ export class TokenService {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
+  /** Redis TTL for refresh tokens, derived from the configured refreshExpiresIn value. */
+  private get refreshTtlSeconds(): number {
+    return parseDurationToSeconds(this.configService.get<string>('auth.refreshExpiresIn', '7d'));
+  }
+
   // ─── Issue ──────────────────────────────────────────────────────────────
 
   /**
@@ -63,8 +87,12 @@ export class TokenService {
   }
 
   /**
-   * Rotates within an existing family: deletes the old allowlist entry,
-   * marks the old jti as consumed, and issues a new pair under the same familyId.
+   * Rotates within an existing family: atomically consumes the old allowlist
+   * entry via GETDEL, verifies ownership, then writes the new state.
+   *
+   * Using GETDEL ensures only ONE concurrent caller can proceed — any second
+   * concurrent request with the same oldJti will receive null and be rejected,
+   * eliminating the rotation race condition inherent in separate GET + DEL.
    *
    * Called only after the incoming refresh token has been validated — do NOT
    * call this directly from the controller.
@@ -75,17 +103,39 @@ export class TokenService {
     role: Role,
     familyId: string,
   ): Promise<IssuedTokens> {
+    // GETDEL atomically reads and deletes the allowlist entry.
+    // Only ONE concurrent caller can receive a non-null result for the same jti.
+    const allowlistEntry = await this.redis.getdel(rtKey(oldJti));
+
+    if (!allowlistEntry) {
+      // Token not (or no longer) in allowlist — race was lost, or a genuine replay.
+      // Check the consumed marker to detect reuse attacks.
+      const consumedMark = await this.redis.get(rtFamilyKey(familyId, oldJti));
+      if (consumedMark) {
+        this.logger.warn(
+          `Refresh token reuse detected for user=${userId}, family=${familyId}, jti=${oldJti}. Revoking entire family.`,
+        );
+        await this.revokeFamily(familyId);
+      }
+      throw new UnauthorizedException('Refresh token is invalid or has been revoked');
+    }
+
+    // Verify the entry matches the claimed user/family (prevents cross-user forgery).
+    const [storedUserId, storedFamilyId] = allowlistEntry.split(':');
+    if (storedUserId !== userId || storedFamilyId !== familyId) {
+      this.logger.warn(`Refresh token allowlist mismatch for jti=${oldJti}. Possible tampering.`);
+      throw new UnauthorizedException('Refresh token is invalid or has been revoked');
+    }
+
     const newJti = uuidv4();
 
-    // Atomic pipeline: update Redis state and issue new entries together.
     const pipeline = this.redis.pipeline();
-    pipeline.del(rtKey(oldJti));
-    pipeline.set(rtFamilyKey(familyId, oldJti), '1', 'EX', REFRESH_TOKEN_TTL_S);
-    pipeline.set(rtKey(newJti), `${userId}:${familyId}`, 'EX', REFRESH_TOKEN_TTL_S);
+    pipeline.set(rtFamilyKey(familyId, oldJti), '1', 'EX', this.refreshTtlSeconds);
+    pipeline.set(rtKey(newJti), `${userId}:${familyId}`, 'EX', this.refreshTtlSeconds);
     pipeline.sadd(rtFamilyActiveKey(familyId), newJti);
     pipeline.srem(rtFamilyActiveKey(familyId), oldJti);
-    pipeline.expire(rtFamilyActiveKey(familyId), REFRESH_TOKEN_TTL_S);
-    await pipeline.exec();
+    pipeline.expire(rtFamilyActiveKey(familyId), this.refreshTtlSeconds);
+    this.assertPipelineResults(await pipeline.exec(), 'rotateRefreshToken');
 
     const accessToken = this.signAccessToken(userId, role, uuidv4());
     const refreshToken = this.signRefreshToken(userId, newJti, familyId);
@@ -96,53 +146,23 @@ export class TokenService {
   // ─── Validate ────────────────────────────────────────────────────────────
 
   /**
-   * Validates a refresh token for the /auth/refresh endpoint.
+   * Verifies the refresh token's JWT signature and expiry.
+   * Returns the decoded payload for use in rotation/logout.
    *
-   * Steps:
-   * 1. Verify JWT signature and expiry.
-   * 2. Check Redis allowlist — if absent, perform reuse detection.
-   * 3. Return the payload for rotation.
+   * The Redis allowlist check and reuse detection are performed atomically
+   * inside rotateRefreshToken via GETDEL, eliminating the rotation race
+   * that would exist with a separate GET here followed by writes there.
    *
-   * Throws `UnauthorizedException` on any failure.
+   * Throws `UnauthorizedException` if the JWT is invalid or expired.
    */
   async validateRefreshToken(token: string): Promise<JwtRefreshPayload> {
-    let payload: JwtRefreshPayload;
-
     try {
-      payload = await this.jwtService.verifyAsync<JwtRefreshPayload>(token, {
+      return await this.jwtService.verifyAsync<JwtRefreshPayload>(token, {
         secret: this.configService.getOrThrow<string>('auth.refreshSecret'),
       });
     } catch {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
-
-    const { jti, familyId, sub: userId } = payload;
-
-    // Check if this jti is in the allowlist.
-    const allowlistEntry = await this.redis.get(rtKey(jti));
-
-    if (!allowlistEntry) {
-      // Token not in allowlist — could be expired or already consumed.
-      // Check whether it was legitimately consumed (marks a replay attack).
-      const consumedMark = await this.redis.get(rtFamilyKey(familyId, jti));
-      if (consumedMark) {
-        // Token was consumed before — this is a REUSE attack.
-        this.logger.warn(
-          `Refresh token reuse detected for user=${userId}, family=${familyId}, jti=${jti}. Revoking entire family.`,
-        );
-        await this.revokeFamily(familyId);
-      }
-      throw new UnauthorizedException('Refresh token is invalid or has been revoked');
-    }
-
-    // Verify allowlist entry matches the claimed user/family (prevents cross-user forgery).
-    const [storedUserId, storedFamilyId] = allowlistEntry.split(':');
-    if (storedUserId !== userId || storedFamilyId !== familyId) {
-      this.logger.warn(`Refresh token allowlist mismatch for jti=${jti}. Possible tampering.`);
-      throw new UnauthorizedException('Refresh token is invalid or has been revoked');
-    }
-
-    return payload;
   }
 
   // ─── Revoke ─────────────────────────────────────────────────────────────
@@ -155,7 +175,7 @@ export class TokenService {
     const pipeline = this.redis.pipeline();
     pipeline.del(rtKey(jti));
     pipeline.srem(rtFamilyActiveKey(familyId), jti);
-    await pipeline.exec();
+    this.assertPipelineResults(await pipeline.exec(), 'revokeRefreshToken');
   }
 
   /**
@@ -171,7 +191,7 @@ export class TokenService {
         pipeline.del(rtKey(jti));
       }
       pipeline.del(rtFamilyActiveKey(familyId));
-      await pipeline.exec();
+      this.assertPipelineResults(await pipeline.exec(), 'revokeFamily');
     } else {
       // Nothing to revoke — clean up the set key regardless.
       await this.redis.del(rtFamilyActiveKey(familyId));
@@ -204,14 +224,29 @@ export class TokenService {
     const jti = uuidv4();
 
     const pipeline = this.redis.pipeline();
-    pipeline.set(rtKey(jti), `${userId}:${familyId}`, 'EX', REFRESH_TOKEN_TTL_S);
+    pipeline.set(rtKey(jti), `${userId}:${familyId}`, 'EX', this.refreshTtlSeconds);
     pipeline.sadd(rtFamilyActiveKey(familyId), jti);
-    pipeline.expire(rtFamilyActiveKey(familyId), REFRESH_TOKEN_TTL_S);
-    await pipeline.exec();
+    pipeline.expire(rtFamilyActiveKey(familyId), this.refreshTtlSeconds);
+    this.assertPipelineResults(await pipeline.exec(), 'rotateTokens');
 
     const accessToken = this.signAccessToken(userId, role, uuidv4());
     const refreshToken = this.signRefreshToken(userId, jti, familyId);
 
     return { accessToken, refreshToken, refreshJti: jti, familyId };
+  }
+
+  private assertPipelineResults(
+    results: Array<[Error | null, unknown]> | null,
+    context: string,
+  ): void {
+    if (!results) {
+      throw new Error(`Redis pipeline returned null in ${context}`);
+    }
+    for (const [err] of results) {
+      if (err) {
+        this.logger.error(`Redis pipeline command failed in ${context}: ${err.message}`);
+        throw new Error(`Redis pipeline failed in ${context}: ${err.message}`);
+      }
+    }
   }
 }
