@@ -88,24 +88,27 @@ export class PoliciesGuard implements CanActivate {
   ): Promise<boolean> {
     if (typeof handler === 'function') {
       if (this.isPolicyHandlerType(handler)) {
-        const contextId = ContextIdFactory.getByRequest(request);
-        try {
-          const instance = this.moduleRef.get<IPolicyHandler>(handler as PolicyHandlerType, {
-            strict: false,
-          });
-          return instance.handle(ability);
-        } catch {
-          const resolved = await this.moduleRef.resolve<IPolicyHandler>(
-            handler as PolicyHandlerType,
-            contextId,
-          );
-          return resolved.handle(ability);
-        }
+        const instance = await this.resolvePolicyHandler(handler as PolicyHandlerType, request);
+        return instance.handle(ability);
       }
 
       return (handler as PolicyHandlerCallback)(ability);
     }
     return (handler as IPolicyHandler).handle(ability);
+  }
+
+  private async resolvePolicyHandler(
+    handlerType: PolicyHandlerType,
+    request: Request,
+  ): Promise<IPolicyHandler> {
+    try {
+      return this.moduleRef.get<IPolicyHandler>(handlerType, {
+        strict: false,
+      });
+    } catch {
+      const contextId = ContextIdFactory.getByRequest(request);
+      return this.moduleRef.resolve<IPolicyHandler>(handlerType, contextId);
+    }
   }
 
   private isPolicyHandlerType(handler: PolicyHandler): handler is PolicyHandlerType {

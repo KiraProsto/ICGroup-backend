@@ -13,6 +13,12 @@ class ReadCompanyHandler implements IPolicyHandler {
   }
 }
 
+class ThrowingHandler implements IPolicyHandler {
+  handle(): boolean {
+    throw new Error('policy handler bug');
+  }
+}
+
 describe('PoliciesGuard', () => {
   const mockReflector = {
     getAllAndOverride: jest.fn(),
@@ -137,5 +143,24 @@ describe('PoliciesGuard', () => {
 
     await expect(guard.canActivate(createExecutionContext(user))).resolves.toBe(true);
     expect(mockModuleRef.resolve).toHaveBeenCalled();
+  });
+
+  it('propagates handler execution errors instead of masking them with a fallback resolve', async () => {
+    const user: AuthenticatedUser = {
+      id: 'user-1',
+      email: 'user@example.com',
+      role: Role.CONTENT_MANAGER,
+    };
+
+    mockReflector.getAllAndOverride.mockReturnValue([ThrowingHandler]);
+    mockCaslAbilityFactory.createForUser.mockResolvedValue({
+      can: jest.fn().mockReturnValue(true),
+    });
+    mockModuleRef.get.mockReturnValue(new ThrowingHandler());
+
+    await expect(guard.canActivate(createExecutionContext(user))).rejects.toThrow(
+      'policy handler bug',
+    );
+    expect(mockModuleRef.resolve).not.toHaveBeenCalled();
   });
 });
