@@ -42,7 +42,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
   ) {
-    this.isProd = this.configService.get<string>('NODE_ENV') === 'production';
+    this.isProd = this.configService.get<string>('app.nodeEnv') === 'production';
   }
 
   // ─── POST /auth/login ────────────────────────────────────────────────────
