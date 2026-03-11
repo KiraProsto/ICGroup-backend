@@ -53,6 +53,14 @@ enum PurchaseStatus {
   CANCELLED
 }
 
+enum ArticleType {
+  NEWS
+  ARTICLE
+  PRESS_RELEASE
+  INTERVIEW
+  ANNOUNCEMENT
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -69,6 +77,8 @@ enum AuditResourceType {
   NewsArticle
   Company
   Purchase
+  PageSection
+  Rubric
 }
 
 enum AuditLogStatus {
@@ -115,20 +125,41 @@ model Page {
   sections PageSection[]
   author   User          @relation(fields: [createdById], references: [id])
 
+  @@index([status])
+  @@index([createdById])
   @@map("pages")
 }
 
 model PageSection {
-  id     String      @id @default(uuid())
-  pageId String      @map("page_id")
-  type   SectionType // hero, feature-grid, testimonials, etc.
-  order  Int
-  data   Json // JSONB — variable content payload, validated by Zod per type
+  id        String      @id @default(uuid())
+  pageId    String      @map("page_id")
+  type      SectionType // hero, feature-grid, testimonials, cta, text, gallery
+  order     Int
+  data      Json // JSONB — variable content payload per SectionType, validated by Zod
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @default(now()) @updatedAt @map("updated_at")
 
   page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
 
+  // (pageId, order) covers WHERE pageId = ? ORDER BY order queries (leftmost prefix)
   @@index([pageId, order])
   @@map("page_sections")
+}
+
+// ─────────────────────────────────────────────
+//  CONTENT — RUBRICS
+// ─────────────────────────────────────────────
+
+model Rubric {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  newsArticles NewsArticle[]
+
+  @@map("rubrics")
 }
 
 // ─────────────────────────────────────────────
@@ -136,38 +167,60 @@ model PageSection {
 // ─────────────────────────────────────────────
 
 model NewsArticle {
-  id          String        @id @default(uuid())
-  title       String
-  slug        String        @unique
-  excerpt     String?
-  // Source of truth — ProseMirror/Tiptap JSON
-  body        Json
+  id               String                   @id @default(uuid())
+  title            String
+  slug             String                   @unique
+  articleType      ArticleType              @default(NEWS) @map("article_type")
+  rubricId         String?                  @map("rubric_id")
+  // Excerpt / Анонс block
+  excerptTitle     String?                  @map("excerpt_title")
+  excerpt          String? // plain text body of the anons block
+  excerptImage     String?                  @map("excerpt_image")
+  // Rich-text body — Source of truth (ProseMirror/Tiptap JSON)
+  body             Json
   // Pre-rendered HTML (generated on publish via generateHTML())
-  bodyHtml    String?       @map("body_html")
+  bodyHtml         String?                  @map("body_html")
   // Plain text extraction (generated on publish, powers FTS)
-  bodyText    String?       @map("body_text")
-  coverImage  String?       @map("cover_image")
-  status      ContentStatus @default(DRAFT)
-  publishedAt DateTime?     @map("published_at")
-  authorId    String        @map("author_id")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
-  deletedAt   DateTime?     @map("deleted_at")
+  bodyText         String?                  @map("body_text")
+  // PostgreSQL-generated tsvector column, kept in schema to prevent drift.
+  bodyTsv          Unsupported("tsvector")? @map("body_tsv")
+  coverImage       String?                  @map("cover_image")
+  status           ContentStatus            @default(DRAFT)
+  publishedAt      DateTime?                @map("published_at")
+  // Social media meta per platform: { facebook, vk, telegram, seo }
+  // Each key: { title: string, text: string, imageUrl: string }
+  socialMeta       Json?                    @map("social_meta")
+  // RSS distribution toggles
+  rssGoogleNews    Boolean                  @default(false) @map("rss_google_news")
+  rssYandexDzen    Boolean                  @default(false) @map("rss_yandex_dzen")
+  rssYandexNews    Boolean                  @default(false) @map("rss_yandex_news")
+  rssDefault       Boolean                  @default(false) @map("rss_default")
+  // Editorial controls
+  publicationIndex Int                      @default(500) @map("publication_index")
+  viewCount        Int                      @default(0) @map("view_count")
+  // Advertisement block
+  adBannerCode     String?                  @map("ad_banner_code")
+  adBannerImage    String?                  @map("ad_banner_image")
+  authorId         String                   @map("author_id")
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  updatedAt        DateTime                 @updatedAt @map("updated_at")
+  deletedAt        DateTime?                @map("deleted_at")
 
-  author User @relation(fields: [authorId], references: [id])
+  author User    @relation(fields: [authorId], references: [id])
+  rubric Rubric? @relation(fields: [rubricId], references: [id], onDelete: SetNull)
 
   @@index([status, publishedAt])
   @@index([authorId])
+  @@index([status, publicationIndex])
+  @@index([status, articleType, publicationIndex])
+  @@index([status, rubricId, publicationIndex])
   @@map("news_articles")
 }
 
-// Full-text search index (applied via raw SQL migration):
-// ALTER TABLE news_articles
-//   ADD COLUMN body_tsv tsvector
-//   GENERATED ALWAYS AS (
-//     to_tsvector('russian', coalesce(title, '') || ' ' || coalesce(body_text, ''))
-//   ) STORED;
-// CREATE INDEX idx_news_fts ON news_articles USING GIN (body_tsv);
+// Full-text search column (applied via raw SQL — see 20260309000002_add_news_fts):
+// body_tsv tsvector GENERATED ALWAYS AS (
+//   to_tsvector('russian', coalesce(title, '') || ' ' || coalesce(body_text, ''))
+// ) STORED — GIN index idx_news_fts covers it.
 
 // ─────────────────────────────────────────────
 //  SALES

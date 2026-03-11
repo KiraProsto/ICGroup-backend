@@ -13,6 +13,9 @@ jest.mock('../../generated/prisma/client.js', () => ({
   PrismaClient: jest.fn(),
   Prisma: {
     JsonNull: null,
+    TransactionIsolationLevel: {
+      Serializable: 'Serializable',
+    },
   },
 }));
 jest.mock('@prisma/adapter-pg', () => ({ PrismaPg: jest.fn() }));
@@ -69,7 +72,7 @@ const mockPrisma = {
 };
 
 const mockCasl = {
-  invalidateCache: jest.fn(),
+  invalidateCache: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockAuditService = {
@@ -392,6 +395,52 @@ describe('UsersService', () => {
       expect(typeof result.createdAt).toBe('string');
       expect(typeof result.updatedAt).toBe('string');
       expect(result).not.toHaveProperty('passwordHash');
+    });
+  });
+
+  // ─── cache invalidation resilience ───────────────────────────────────────
+
+  describe('cache invalidation resilience', () => {
+    it('update succeeds even when CASL cache invalidation throws', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(mockManagedUser);
+      mockPrisma.user.update.mockResolvedValue({ ...mockUserRow, isActive: false });
+      mockCasl.invalidateCache.mockRejectedValueOnce(new Error('Redis down'));
+
+      // Should not throw — Redis failure is best-effort
+      const result = await service.update('uuid-1', { isActive: false }, adminActor);
+
+      expect(result.isActive).toBe(false);
+    });
+
+    it('update succeeds even when session cache redis.del throws', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(mockManagedUser);
+      mockPrisma.user.update.mockResolvedValue({ ...mockUserRow, isActive: false });
+      mockRedis.del.mockRejectedValueOnce(new Error('Redis down'));
+
+      // Should not throw — Redis failure is best-effort
+      const result = await service.update('uuid-1', { isActive: false }, adminActor);
+
+      expect(result.isActive).toBe(false);
+    });
+
+    it('remove succeeds even when CASL cache invalidation throws', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(mockManagedUser);
+      mockPrisma.user.update.mockResolvedValue({ ...mockUserRow, isActive: false, deletedAt: now });
+      mockCasl.invalidateCache.mockRejectedValueOnce(new Error('Redis down'));
+
+      const result = await service.remove('uuid-1', adminActor);
+
+      expect(result.deletedAt).not.toBeNull();
+    });
+
+    it('restore succeeds even when session cache redis.del throws', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ ...mockManagedUser, deletedAt: now });
+      mockPrisma.user.update.mockResolvedValue({ ...mockUserRow, isActive: true, deletedAt: null });
+      mockRedis.del.mockRejectedValueOnce(new Error('Redis down'));
+
+      const result = await service.restore('uuid-1', adminActor);
+
+      expect(result.deletedAt).toBeNull();
     });
   });
 });

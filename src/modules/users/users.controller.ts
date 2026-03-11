@@ -63,7 +63,11 @@ export class UsersController {
   // ─── GET /admin/users/:id ──────────────────────────────────────────────
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a single user by ID. SUPER_ADMIN only.' })
+  @ApiOperation({
+    summary: 'Get a single user by ID. SUPER_ADMIN only.',
+    description:
+      'Returns the user regardless of soft-delete status (deletedAt will be populated for deleted users).',
+  })
   @ApiOkResponse({ type: ApiResponseDto(UserResponseDto) })
   @ApiNotFoundResponse({ type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
@@ -118,7 +122,12 @@ export class UsersController {
   // ─── POST /admin/users/:id/restore ─────────────────────────────────────
 
   @Post(':id/restore')
-  @ApiOperation({ summary: 'Restore a soft-deleted user. SUPER_ADMIN only.' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Restore a soft-deleted user. SUPER_ADMIN only.',
+    description:
+      'Clears deletedAt and sets isActive to true. Restoration always re-activates the account; use PATCH to deactivate afterwards if needed.',
+  })
   @ApiOkResponse({ type: ApiResponseDto(UserResponseDto) })
   @ApiNotFoundResponse({ type: ApiErrorResponseDto })
   @ApiConflictResponse({ type: ApiErrorResponseDto, description: 'User is not deleted' })

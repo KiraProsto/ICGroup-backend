@@ -46,7 +46,7 @@ type AuditSnapshot = {
 };
 
 const SERIALIZABLE_TX_OPTIONS = {
-  isolationLevel: 'Serializable',
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
   maxWait: 5_000,
   timeout: 10_000,
 } as const;
@@ -101,12 +101,15 @@ export class UsersService {
       this.prisma.user.count({ where }),
     ]);
 
-    return paginatedResult(users.map(this.toResponseDto), {
-      total,
-      page,
-      perPage,
-      totalPages: Math.ceil(total / perPage),
-    });
+    return paginatedResult(
+      users.map((u) => this.toResponseDto(u)),
+      {
+        total,
+        page,
+        perPage,
+        totalPages: Math.ceil(total / perPage),
+      },
+    );
   }
 
   // ─── Find one ─────────────────────────────────────────────────────────────
@@ -128,12 +131,13 @@ export class UsersService {
 
   async create(dto: CreateUserDto, actor: AuthenticatedUser): Promise<UserResponseDto> {
     const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
+    const normalizedEmail = dto.email.trim().toLowerCase();
 
     const user = await this.withSerializableTransaction(async (tx) => {
       try {
         return await tx.user.create({
           data: {
-            email: dto.email,
+            email: normalizedEmail,
             passwordHash,
             role: dto.role,
           },
@@ -163,6 +167,13 @@ export class UsersService {
   // ─── Update ───────────────────────────────────────────────────────────────
 
   async update(id: string, dto: UpdateUserDto, actor: AuthenticatedUser): Promise<UserResponseDto> {
+    // Fast-path existence check: avoid spending Argon2id time on a missing user.
+    // The transaction still re-checks existence via loadManagedUserOrThrow.
+    if (dto.password !== undefined) {
+      const exists = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
+      if (!exists) throw new NotFoundException(`User ${id} not found`);
+    }
+
     const passwordHash =
       dto.password !== undefined
         ? await argon2.hash(dto.password, { type: argon2.argon2id })
@@ -278,6 +289,13 @@ export class UsersService {
 
   // ─── Restore ──────────────────────────────────────────────────────────────
 
+  /**
+   * Restores a soft-deleted user.
+   * Sets `deletedAt: null` and `isActive: true` — restoration always
+   * re-activates the account regardless of the `isActive` value at deletion
+   * time, because `remove` unconditionally deactivates the user. An admin
+   * wishing to restore-but-keep-inactive must follow up with a PATCH.
+   */
   async restore(id: string, actor: AuthenticatedUser): Promise<UserResponseDto> {
     const { restored, beforeSnapshot } = await this.withSerializableTransaction(async (tx) => {
       const existingUser = await this.loadManagedUserOrThrow(tx, id);
@@ -322,6 +340,8 @@ export class UsersService {
         return await this.prisma.$transaction((tx) => operation(tx), SERIALIZABLE_TX_OPTIONS);
       } catch (error) {
         if (this.isRetryableTransactionConflict(error) && attempt < SERIALIZABLE_RETRY_LIMIT) {
+          // Exponential backoff with jitter to reduce thundering-herd on serialization conflicts.
+          await this.sleep(Math.random() * Math.min(100, 10 * 2 ** (attempt - 1)));
           continue;
         }
 
@@ -330,6 +350,10 @@ export class UsersService {
     }
 
     throw new Error('Exceeded serializable transaction retry limit');
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async loadManagedUserOrThrow(
@@ -388,14 +412,18 @@ export class UsersService {
   }
 
   private async invalidateUserCaches(userId: string): Promise<void> {
-    await this.caslAbilityFactory.invalidateCache(userId);
-    try {
-      await this.redis.del(`${USER_SESSION_CACHE_PREFIX}${userId}`);
-    } catch (error) {
+    // Both invalidations are best-effort: a Redis failure must never surface
+    // as an error after a successfully-committed DB mutation.
+    await this.caslAbilityFactory.invalidateCache(userId).catch((error: unknown) => {
+      this.logger.warn(
+        `Failed to invalidate CASL ability cache for userId=${userId}: ${(error as Error)?.message ?? error}`,
+      );
+    });
+    await this.redis.del(`${USER_SESSION_CACHE_PREFIX}${userId}`).catch((error: unknown) => {
       this.logger.warn(
         `Failed to invalidate user session cache for userId=${userId}: ${(error as Error)?.message ?? error}`,
       );
-    }
+    });
   }
 
   private rethrowKnownWriteErrors(error: unknown): void {

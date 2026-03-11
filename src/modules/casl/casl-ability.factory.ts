@@ -20,6 +20,7 @@ export type AppSubjects =
   | 'NewsArticle'
   | 'Page'
   | 'PageSection'
+  | 'Rubric'
   | 'Company'
   | 'Purchase'
   | 'AuditLog'
@@ -53,10 +54,10 @@ const ABILITY_CACHE_TTL_SECONDS = 300;
  *
  * Role permission matrix:
  *   SUPER_ADMIN    — manage all
- *   CONTENT_MANAGER — manage NewsArticle | Page | PageSection;
+ *   CONTENT_MANAGER — manage NewsArticle | Page | PageSection | Rubric;
  *                     read  User | Company | AuditLog
  *   SALES_MANAGER  — manage Company | Purchase;
- *                     read  NewsArticle | Page | User
+ *                     read  NewsArticle | Page | Rubric | User
  */
 @Injectable()
 export class CaslAbilityFactory {
@@ -149,6 +150,7 @@ export class CaslAbilityFactory {
         can('manage', 'NewsArticle');
         can('manage', 'Page');
         can('manage', 'PageSection');
+        can('manage', 'Rubric');
         // Read-only access to supporting resources.
         can('read', 'User');
         can('read', 'Company');
@@ -162,6 +164,7 @@ export class CaslAbilityFactory {
         // Read content and user list (to associate with purchases).
         can('read', 'NewsArticle');
         can('read', 'Page');
+        can('read', 'Rubric');
         can('read', 'User');
         break;
 

@@ -50,6 +50,7 @@ describe('PrismaService', () => {
       user: {},
       page: {},
       pageSection: {},
+      rubric: {},
       newsArticle: {},
       company: {},
       purchase: {},
@@ -144,12 +145,18 @@ describe('PrismaService', () => {
   // ── Model accessors ────────────────────────────────────────────────────────
 
   describe('model accessors', () => {
-    it.each(['user', 'page', 'pageSection', 'newsArticle', 'company', 'purchase', 'auditLog'])(
-      'should expose the %s delegate',
-      (accessor) => {
-        expect(service[accessor as keyof PrismaService]).toBeDefined();
-      },
-    );
+    it.each([
+      'user',
+      'page',
+      'pageSection',
+      'rubric',
+      'newsArticle',
+      'company',
+      'purchase',
+      'auditLog',
+    ])('should expose the %s delegate', (accessor) => {
+      expect(service[accessor as keyof PrismaService]).toBeDefined();
+    });
   });
 
   // ── Raw-query helpers ─────────────────────────────────────────────────────
