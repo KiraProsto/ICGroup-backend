@@ -57,6 +57,24 @@ describe('CaslAbilityFactory', () => {
     expect(contentAbility.can('manage', 'Company')).toBe(false);
   });
 
+  it('grants rubric management to content managers and read-only rubric access to sales managers', async () => {
+    mockRedis.get.mockResolvedValue(null);
+
+    const contentAbility = await factory.createForUser({
+      id: 'content-1',
+      role: Role.CONTENT_MANAGER,
+    });
+
+    const salesAbility = await factory.createForUser({
+      id: 'sales-1',
+      role: Role.SALES_MANAGER,
+    });
+
+    expect(contentAbility.can('manage', 'Rubric')).toBe(true);
+    expect(salesAbility.can('read', 'Rubric')).toBe(true);
+    expect(salesAbility.can('manage', 'Rubric')).toBe(false);
+  });
+
   it('returns an empty ability for a soft-deleted user when loading from Prisma', async () => {
     mockPrismaService.user.findUnique.mockResolvedValue({
       id: 'user-1',

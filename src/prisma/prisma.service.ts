@@ -118,6 +118,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.pageSection;
   }
 
+  get rubric(): PrismaClientInstance['rubric'] {
+    return this.prisma.rubric;
+  }
+
   get newsArticle(): PrismaClientInstance['newsArticle'] {
     return this.prisma.newsArticle;
   }
