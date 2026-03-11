@@ -389,7 +389,13 @@ export class UsersService {
 
   private async invalidateUserCaches(userId: string): Promise<void> {
     await this.caslAbilityFactory.invalidateCache(userId);
-    await this.redis.del(`${USER_SESSION_CACHE_PREFIX}${userId}`).catch(() => {});
+    try {
+      await this.redis.del(`${USER_SESSION_CACHE_PREFIX}${userId}`);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to invalidate user session cache for userId=${userId}: ${(error as Error)?.message ?? error}`,
+      );
+    }
   }
 
   private rethrowKnownWriteErrors(error: unknown): void {

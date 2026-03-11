@@ -44,8 +44,7 @@ function parseHttpException(exception: HttpException): ParsedHttpError {
   const body = raw as Record<string, unknown>;
 
   if (Array.isArray(body['message'])) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { message: validationMessages, statusCode, ...rest } = body;
+    const { message: validationMessages, statusCode: _statusCode, ...rest } = body;
     const details =
       Object.keys(rest).length > 0 ? { ...rest, messages: validationMessages } : validationMessages;
 
@@ -55,8 +54,7 @@ function parseHttpException(exception: HttpException): ParsedHttpError {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { message: rawMessage, statusCode, ...rest } = body;
+  const { message: rawMessage, statusCode: _statusCode, ...rest } = body;
   const message =
     typeof rawMessage === 'string'
       ? rawMessage

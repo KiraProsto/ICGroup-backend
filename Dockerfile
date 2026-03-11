@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────
 #  Stage 1: dependencies
 # ─────────────────────────────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 
 # Build tools required by native addons (argon2 compiles a C++ binding)
@@ -13,7 +13,7 @@ RUN npm ci
 # ─────────────────────────────────────────────────────────────
 #  Stage 2: development (used by docker-compose for hot reload)
 # ─────────────────────────────────────────────────────────────
-FROM node:22-alpine AS development
+FROM node:24-alpine AS development
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -43,7 +43,7 @@ RUN npm run build
 # ─────────────────────────────────────────────────────────────
 #  Stage 4: production
 # ─────────────────────────────────────────────────────────────
-FROM node:22-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 
 ENV NODE_ENV=production

@@ -70,12 +70,19 @@ export class AuditService {
     const auditId = uuidv4();
     const jobData: AuditJobData = { ...data, auditId };
 
-    await this.auditQueue.add(AUDIT_JOB_NAME, jobData, {
-      jobId: `audit-${auditId}`,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: { count: 1000 },
-      removeOnFail: { count: 5000 },
-    });
+    try {
+      await this.auditQueue.add(AUDIT_JOB_NAME, jobData, {
+        jobId: `audit-${auditId}`,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+        removeOnComplete: { count: 1000 },
+        removeOnFail: { count: 5000 },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue async audit log: auditId=${auditId}, action=${data.action}, resource=${data.resourceType}/${data.resourceId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
   }
 }
