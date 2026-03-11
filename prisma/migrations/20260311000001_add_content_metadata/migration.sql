@@ -41,8 +41,8 @@ CREATE TABLE "rubrics" (
   CONSTRAINT "rubrics_pkey" PRIMARY KEY ("id")
 );
 
--- Unique constraint drives the B-tree lookup; the explicit index below is kept
--- for documentation clarity — PostgreSQL will use the unique index for scans.
+-- Create a unique index on slug; PostgreSQL enforces uniqueness via this index
+-- and uses it for B-tree lookups and scans on the rubrics table.
 CREATE UNIQUE INDEX "rubrics_slug_key" ON "rubrics" ("slug");
 
 -- ─────────────────────────────────────────────

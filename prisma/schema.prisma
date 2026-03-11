@@ -74,11 +74,11 @@ enum AuditAction {
 enum AuditResourceType {
   User
   Page
-  PageSection
   NewsArticle
-  Rubric
   Company
   Purchase
+  PageSection
+  Rubric
 }
 
 enum AuditLogStatus {
