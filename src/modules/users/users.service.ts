@@ -131,7 +131,7 @@ export class UsersService {
 
   async create(dto: CreateUserDto, actor: AuthenticatedUser): Promise<UserResponseDto> {
     const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
-    const normalizedEmail = dto.email.toLowerCase();
+    const normalizedEmail = dto.email.trim().toLowerCase();
 
     const user = await this.withSerializableTransaction(async (tx) => {
       try {
