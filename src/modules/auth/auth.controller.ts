@@ -89,6 +89,7 @@ export class AuthController {
   // ─── POST /auth/refresh ───────────────────────────────────────────────────
 
   @Public()
+  @Throttle({ login: {} })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiCookieAuth(REFRESH_TOKEN_COOKIE)

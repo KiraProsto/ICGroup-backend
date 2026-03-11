@@ -1,4 +1,4 @@
-import { Global, Inject, Module, OnModuleDestroy } from '@nestjs/common';
+import { Global, Inject, Logger, Module, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
 
@@ -34,11 +34,9 @@ export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
           lazyConnect: true,
         });
 
+        const logger = new Logger('RedisModule');
         client.on('error', (err: Error) => {
-          // Errors are logged by the consumer (e.g. health indicator).
-          // Attaching this listener prevents Node from treating them as
-          // unhandled rejections that crash the process.
-          void err; // intentionally swallowed here; health checks surface it
+          logger.error(`Redis client error: ${err.message}`);
         });
 
         return client;

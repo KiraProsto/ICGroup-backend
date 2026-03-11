@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { createRequire } from 'module';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
-const require = createRequire(import.meta.url);
 // Captured once at module load — avoids repeated resolution on each request.
-const { version } = require('../package.json') as { version: string };
+// Uses process.cwd() instead of import.meta.url for CJS test-runner compatibility.
+const { version } = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8')) as {
+  version: string;
+};
 
 @Injectable()
 export class AppService {

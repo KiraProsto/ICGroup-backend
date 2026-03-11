@@ -46,6 +46,7 @@ async function bootstrap() {
       .addTag('meta', 'API info')
       .addTag('auth', 'Authentication & token management')
       .addTag('users', 'User management (Super Admin)')
+      .addTag('admin/users', 'User CRUD — SUPER_ADMIN only')
       .addTag('content', 'Content management (Content Manager)')
       .addTag('sales', 'Sales data (Sales Manager)')
       .addTag('public', 'Public portal endpoints (no auth)')
