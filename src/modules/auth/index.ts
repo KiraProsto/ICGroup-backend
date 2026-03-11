@@ -4,5 +4,6 @@ export { TokenService } from './token.service.js';
 export { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 export { Public } from './decorators/public.decorator.js';
 export { CurrentUser } from './decorators/current-user.decorator.js';
+export { USER_SESSION_CACHE_PREFIX } from './strategies/jwt.strategy.js';
 export type { AuthenticatedUser } from './decorators/current-user.decorator.js';
 export type { JwtAccessPayload, JwtRefreshPayload } from './interfaces/jwt-payload.interface.js';

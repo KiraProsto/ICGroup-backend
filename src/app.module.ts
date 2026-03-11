@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import Joi from 'joi';
@@ -15,6 +16,7 @@ import { RedisModule, REDIS_CLIENT } from './redis/redis.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { CaslModule } from './modules/casl/casl.module.js';
+import { UsersModule } from './modules/users/users.module.js';
 import { RedisThrottlerStorage } from './common/throttler-storage.js';
 
 @Module({
@@ -69,6 +71,19 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
     // ── Redis (global — shared ioredis client) ─────────────
     RedisModule,
 
+    // ── BullMQ (global — Redis-backed job queues) ──────────
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          host: config.get<string>('redis.host', 'localhost'),
+          port: config.get<number>('redis.port', 6379),
+          password: config.get<string>('redis.password'),
+          maxRetriesPerRequest: null,
+        },
+      }),
+    }),
+
     // ── Rate limiting (Redis-backed — shared across all instances) ──
     ThrottlerModule.forRootAsync({
       imports: [RedisModule],
@@ -101,6 +116,9 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
 
     // ── RBAC (CASL PoliciesGuard — runs after JwtAuthGuard) ─
     CaslModule,
+
+    // ── User management (SUPER_ADMIN only) ────────────────
+    UsersModule,
 
     // Feature modules will be added here in subsequent tasks:
     // AuthModule, UsersModule, ContentModule, SalesModule,
