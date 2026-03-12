@@ -33,10 +33,8 @@ enum ContentStatus {
   ARCHIVED
 }
 
-enum PageType {
-  HOME
-  ABOUT
-}
+// PageType enum removed — pages are now dynamic: slug + name are stored on the
+// Page row itself. New pages are created via POST /admin/content/pages.
 
 enum SectionType {
   HERO
@@ -115,7 +113,8 @@ model User {
 
 model Page {
   id          String        @id @default(uuid())
-  type        PageType      @unique
+  slug        String        @unique // URL-safe identifier, e.g. "about", "shareholders"
+  name        String // Human-readable title, e.g. "Об IC Group"
   status      ContentStatus @default(DRAFT)
   publishedAt DateTime?     @map("published_at")
   createdById String        @map("created_by")
@@ -199,6 +198,8 @@ model NewsArticle {
   publicationIndex Int                      @default(500) @map("publication_index")
   viewCount        Int                      @default(0) @map("view_count")
   // Advertisement block
+  // SECURITY: adBannerCode may contain raw ad-tag JavaScript.
+  // It MUST be rendered inside a sandboxed iframe — never injected directly into the page DOM.
   adBannerCode     String?                  @map("ad_banner_code")
   adBannerImage    String?                  @map("ad_banner_image")
   authorId         String                   @map("author_id")
