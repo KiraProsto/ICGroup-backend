@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -12,12 +22,17 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { ApiErrorResponseDto, ApiResponseDto } from '../../common/dto/api-response.dto.js';
+import {
+  ApiErrorResponseDto,
+  ApiPaginatedResponseDto,
+  ApiResponseDto,
+} from '../../common/dto/api-response.dto.js';
 import { CheckPolicies } from '../casl/decorators/check-policies.decorator.js';
 import { CurrentUser, type AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
 import { PagesService } from './pages.service.js';
 import { CreatePageDto } from './dto/create-page.dto.js';
 import { UpsertPageDto } from './dto/upsert-page.dto.js';
+import { ListPagesQueryDto } from './dto/list-pages-query.dto.js';
 import { PageResponseDto, PageSummaryResponseDto } from './dto/page-response.dto.js';
 
 /**
@@ -44,12 +59,12 @@ export class PagesController {
 
   @Get()
   @CheckPolicies((ability) => ability.can('read', 'Page'))
-  @ApiOperation({ summary: 'List all pages (summary, no sections).' })
-  @ApiOkResponse({ type: PageSummaryResponseDto, isArray: true })
+  @ApiOperation({ summary: 'List pages (paginated). Optionally filter by status.' })
+  @ApiOkResponse({ type: ApiPaginatedResponseDto(PageSummaryResponseDto) })
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
-  findAll(): Promise<PageSummaryResponseDto[]> {
-    return this.pagesService.findAll();
+  findAll(@Query() query: ListPagesQueryDto) {
+    return this.pagesService.findAll(query);
   }
 
   // ─── POST /admin/content/pages ────────────────────────────────────────────
@@ -102,12 +117,12 @@ export class PagesController {
   @ApiNotFoundResponse({ type: ApiErrorResponseDto, description: 'Page not found' })
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
-  upsert(
+  replaceSections(
     @Param('slug') slug: string,
     @Body() dto: UpsertPageDto,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<PageResponseDto> {
-    return this.pagesService.upsert(slug, dto, actor);
+    return this.pagesService.replaceSections(slug, dto, actor);
   }
 
   // ─── POST /admin/content/pages/:slug/publish ─────────────────────────────

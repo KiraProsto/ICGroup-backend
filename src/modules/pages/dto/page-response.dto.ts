@@ -51,7 +51,7 @@ export class PageSummaryResponseDto {
   updatedAt!: string;
 }
 
-/** Full page shape including sections — returned by findOne, upsert, publish, archive. */
+/** Full page shape including sections — returned by findOne, replaceSections, publish, archive. */
 export class PageResponseDto extends PageSummaryResponseDto {
   @ApiProperty({ type: [PageSectionResponseDto] })
   sections!: PageSectionResponseDto[];

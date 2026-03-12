@@ -26,7 +26,7 @@ ALTER TABLE "pages"
   ALTER COLUMN "slug" SET NOT NULL;
 
 -- DropEnum (must happen after the last reference to PageType is removed)
-DROP TYPE "PageType";
+DROP TYPE IF EXISTS "PageType";
 
 -- CreateIndex: unique index on slug (replaces pages_type_key)
 CREATE UNIQUE INDEX "pages_slug_key" ON "pages"("slug");

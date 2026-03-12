@@ -7,11 +7,21 @@ import {
 } from '@nestjs/common';
 import { ZodError } from 'zod';
 import { Prisma } from '../../generated/prisma/client.js';
-import { AuditAction, AuditResourceType, ContentStatus } from '../../generated/prisma/enums.js';
+import {
+  AuditAction,
+  AuditResourceType,
+  ContentStatus,
+  SectionType,
+} from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
+import {
+  paginatedResult,
+  type PaginatedResult,
+} from '../../common/interceptors/transform-response.interceptor.js';
 import type { CreatePageDto } from './dto/create-page.dto.js';
+import type { ListPagesQueryDto } from './dto/list-pages-query.dto.js';
 import type { UpsertPageDto } from './dto/upsert-page.dto.js';
 import type {
   PageResponseDto,
@@ -73,7 +83,7 @@ type PageRow = {
 
 type SectionRow = {
   id: string;
-  type: string;
+  type: SectionType;
   order: number;
   data: Prisma.JsonValue;
   createdAt: Date;
@@ -83,7 +93,7 @@ type SectionRow = {
 function mapSection(row: SectionRow): PageSectionResponseDto {
   return {
     id: row.id,
-    type: row.type as PageSectionResponseDto['type'],
+    type: row.type,
     order: row.order,
     data: row.data as Record<string, unknown>,
     createdAt: row.createdAt.toISOString(),
@@ -132,7 +142,7 @@ const SERIALIZABLE_RETRY_LIMIT = 3;
  *
  * Key invariants:
  *  - Page.slug is UNIQUE — create a page first, then update its sections.
- *  - upsert performs a full transactional replace of all sections (Serializable).
+ *  - replaceSections performs a full transactional replace of all sections (Serializable).
  *  - Each section's data JSONB payload is validated by Zod before persistence.
  *  - Publish and archive log via BullMQ (operational events).
  */
@@ -179,13 +189,28 @@ export class PagesService {
 
   // ─── findAll ─────────────────────────────────────────────────────────────
 
-  async findAll(): Promise<PageSummaryResponseDto[]> {
-    const pages = await this.prisma.page.findMany({
-      select: PAGE_SELECT,
-      orderBy: { createdAt: 'asc' },
-      take: 500, // Hard cap — page count is admin-controlled and finite
+  async findAll(query: ListPagesQueryDto): Promise<PaginatedResult<PageSummaryResponseDto>> {
+    const page = query.page ?? 1;
+    const perPage = query.perPage ?? 20;
+    const where = query.status ? { status: query.status } : {};
+
+    const [pages, total] = await Promise.all([
+      this.prisma.page.findMany({
+        where,
+        select: PAGE_SELECT,
+        orderBy: { createdAt: 'asc' },
+        skip: (page - 1) * perPage,
+        take: perPage,
+      }),
+      this.prisma.page.count({ where }),
+    ]);
+
+    return paginatedResult(pages.map(mapPageSummary), {
+      total,
+      page,
+      perPage,
+      totalPages: Math.ceil(total / perPage),
     });
-    return pages.map(mapPageSummary);
   }
 
   // ─── findOne ─────────────────────────────────────────────────────────────
@@ -204,16 +229,16 @@ export class PagesService {
     return mapPage(pageRow, sections);
   }
 
-  // ─── upsert ──────────────────────────────────────────────────────────────
+  // ─── replaceSections ────────────────────────────────────────────────────────
 
   /**
-   * Replaces all sections of an existing page atomically within a single
+   * Atomically replaces all sections of an existing page within a single
    * serializable transaction. Throws 404 if the page does not exist.
    *
    * Zod validates each section's data before the transaction begins so that
    * invalid payloads never reach the database.
    */
-  async upsert(
+  async replaceSections(
     slug: string,
     dto: UpsertPageDto,
     actor: AuthenticatedUser,

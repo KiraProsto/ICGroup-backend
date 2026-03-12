@@ -74,6 +74,7 @@ const mockPrisma = {
     create: jest.fn(),
     findMany: jest.fn(),
     findUnique: jest.fn(),
+    count: jest.fn(),
     update: jest.fn(),
   },
   pageSection: {
@@ -159,22 +160,41 @@ describe('PagesService', () => {
   // ─── findAll ─────────────────────────────────────────────────────────────
 
   describe('findAll', () => {
-    it('returns mapped page summaries', async () => {
+    it('returns a paginated result with mapped summaries', async () => {
       mockPrisma.page.findMany.mockResolvedValue([pageRow]);
+      mockPrisma.page.count.mockResolvedValue(1);
 
-      const result = await service.findAll();
+      const result = await service.findAll({ page: 1, perPage: 20 });
 
-      expect(result).toHaveLength(1);
-      expect(result[0].slug).toBe('about');
-      expect(result[0]).not.toHaveProperty('sections');
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].slug).toBe('about');
+      expect(result.data[0]).not.toHaveProperty('sections');
+      expect(result.meta).toMatchObject({ total: 1, page: 1, perPage: 20, totalPages: 1 });
     });
 
-    it('caps the query at 500 results', async () => {
+    it('filters by status when provided', async () => {
       mockPrisma.page.findMany.mockResolvedValue([]);
+      mockPrisma.page.count.mockResolvedValue(0);
 
-      await service.findAll();
+      await service.findAll({ page: 1, perPage: 20, status: ContentStatus.PUBLISHED });
 
-      expect(mockPrisma.page.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 500 }));
+      expect(mockPrisma.page.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { status: ContentStatus.PUBLISHED } }),
+      );
+      expect(mockPrisma.page.count).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { status: ContentStatus.PUBLISHED } }),
+      );
+    });
+
+    it('applies skip/take from page and perPage params', async () => {
+      mockPrisma.page.findMany.mockResolvedValue([]);
+      mockPrisma.page.count.mockResolvedValue(0);
+
+      await service.findAll({ page: 3, perPage: 10 });
+
+      expect(mockPrisma.page.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 20, take: 10 }),
+      );
     });
   });
 
@@ -203,7 +223,7 @@ describe('PagesService', () => {
 
   // ─── upsert ──────────────────────────────────────────────────────────────
 
-  describe('upsert', () => {
+  describe('replaceSections', () => {
     const validUpsertDto = {
       sections: [
         {
@@ -240,7 +260,7 @@ describe('PagesService', () => {
         op(txClient),
       );
 
-      const result = await service.upsert('about', validUpsertDto, adminActor);
+      const result = await service.replaceSections('about', validUpsertDto, adminActor);
 
       expect(result.sections).toHaveLength(1);
       expect(txClient.pageSection.deleteMany).toHaveBeenCalled();
@@ -261,7 +281,7 @@ describe('PagesService', () => {
         op(txClient),
       );
 
-      await service.upsert('about', validUpsertDto, adminActor);
+      await service.replaceSections('about', validUpsertDto, adminActor);
 
       expect(txClient.pageSection.createMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -278,7 +298,7 @@ describe('PagesService', () => {
         op(txClient),
       );
 
-      await service.upsert('about', { sections: [] }, adminActor);
+      await service.replaceSections('about', { sections: [] }, adminActor);
 
       expect(txClient.pageSection.createMany).not.toHaveBeenCalled();
       expect(txClient.pageSection.deleteMany).toHaveBeenCalled();
@@ -294,7 +314,7 @@ describe('PagesService', () => {
       );
 
       await expect(
-        service.upsert('nonexistent', validUpsertDto, adminActor),
+        service.replaceSections('nonexistent', validUpsertDto, adminActor),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -306,7 +326,7 @@ describe('PagesService', () => {
         ],
       };
 
-      await expect(service.upsert('about', dto, adminActor)).rejects.toBeInstanceOf(
+      await expect(service.replaceSections('about', dto, adminActor)).rejects.toBeInstanceOf(
         BadRequestException,
       );
       expect(mockPrisma.$transaction).not.toHaveBeenCalled();
@@ -320,7 +340,7 @@ describe('PagesService', () => {
         ],
       };
 
-      await expect(service.upsert('about', dto, adminActor)).rejects.toBeInstanceOf(
+      await expect(service.replaceSections('about', dto, adminActor)).rejects.toBeInstanceOf(
         BadRequestException,
       );
       expect(mockPrisma.$transaction).not.toHaveBeenCalled();
@@ -336,7 +356,7 @@ describe('PagesService', () => {
         .mockRejectedValueOnce(p2034)
         .mockImplementationOnce((op: (tx: typeof txClient) => Promise<unknown>) => op(txClient));
 
-      const result = await service.upsert('about', { sections: [] }, adminActor);
+      const result = await service.replaceSections('about', { sections: [] }, adminActor);
 
       expect(mockPrisma.$transaction).toHaveBeenCalledTimes(2);
       expect(result.slug).toBe('about');
@@ -349,7 +369,7 @@ describe('PagesService', () => {
       mockPrisma.$transaction.mockRejectedValue(p2034);
 
       // On the final attempt the raw Prisma error is re-thrown
-      await expect(service.upsert('about', { sections: [] }, adminActor)).rejects.toThrow(
+      await expect(service.replaceSections('about', { sections: [] }, adminActor)).rejects.toThrow(
         'serialization failure',
       );
       expect(mockPrisma.$transaction).toHaveBeenCalledTimes(3);
