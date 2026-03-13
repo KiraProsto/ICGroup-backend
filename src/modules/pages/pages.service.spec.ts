@@ -492,4 +492,65 @@ describe('PagesService', () => {
       await expect(service.archive('about', adminActor)).rejects.toThrow('network timeout');
     });
   });
+
+  // ─── updateName ──────────────────────────────────────────────────────────
+
+  describe('updateName', () => {
+    it('renames a page and returns the updated summary', async () => {
+      const updatedRow = { ...pageRow, name: 'About Us' };
+      mockPrisma.page.findUnique.mockResolvedValue(pageRow);
+      mockPrisma.page.update.mockResolvedValue(updatedRow);
+
+      const result = await service.updateName('about', { name: 'About Us' }, adminActor);
+
+      expect(result.name).toBe('About Us');
+      expect(result).not.toHaveProperty('sections');
+      expect(mockPrisma.page.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: pageRow.id },
+          data: { name: 'About Us' },
+        }),
+      );
+    });
+
+    it('logs an UPDATE audit event with before/after snapshots', async () => {
+      const updatedRow = { ...pageRow, name: 'About Us' };
+      mockPrisma.page.findUnique.mockResolvedValue(pageRow);
+      mockPrisma.page.update.mockResolvedValue(updatedRow);
+
+      await service.updateName('about', { name: 'About Us' }, adminActor);
+
+      expect(mockAuditService.logAsync).toHaveBeenCalledTimes(1);
+      expect(mockAuditService.logAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorId: adminActor.id,
+          resourceId: pageRow.id,
+          beforeSnapshot: expect.objectContaining({ name: 'About' }),
+          afterSnapshot: expect.objectContaining({ name: 'About Us' }),
+        }),
+      );
+    });
+
+    it('throws NotFoundException when page does not exist', async () => {
+      mockPrisma.page.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateName('nonexistent', { name: 'New Name' }, adminActor),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(mockPrisma.page.update).not.toHaveBeenCalled();
+      expect(mockAuditService.logAsync).not.toHaveBeenCalled();
+    });
+
+    it('re-throws unexpected DB errors', async () => {
+      mockPrisma.page.findUnique.mockResolvedValue(pageRow);
+      mockPrisma.page.update.mockRejectedValue(new Error('DB timeout'));
+
+      await expect(service.updateName('about', { name: 'New Name' }, adminActor)).rejects.toThrow(
+        'DB timeout',
+      );
+
+      expect(mockAuditService.logAsync).not.toHaveBeenCalled();
+    });
+  });
 });
