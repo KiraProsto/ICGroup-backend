@@ -60,8 +60,29 @@ export const CtaDataSchema = z.object({
   ctaUrl: httpUrl(),
 });
 
+/**
+ * Rejects strings that contain HTML/JS injection patterns.
+ * Defense-in-depth: content is also expected to be sanitized on the frontend
+ * before rendering. If rich-text HTML is needed here, replace this refinement
+ * with a server-side sanitize-html call using a strict element/attribute allowlist.
+ */
+const UNSAFE_HTML_RE = /<script[\s>]/i;
+const UNSAFE_ATTR_RE = /\s+on[a-z]+\s*=/i;
+const JAVASCRIPT_PROTO_RE = /javascript\s*:/i;
+
+const safeHtmlString = () =>
+  z
+    .string()
+    .min(1)
+    .max(50_000)
+    .refine((v) => !UNSAFE_HTML_RE.test(v), { message: '<script> elements are not allowed' })
+    .refine((v) => !UNSAFE_ATTR_RE.test(v), {
+      message: 'Inline event handlers (on*=) are not allowed',
+    })
+    .refine((v) => !JAVASCRIPT_PROTO_RE.test(v), { message: 'javascript: URIs are not allowed' });
+
 export const TextDataSchema = z.object({
-  content: z.string().min(1).max(50_000),
+  content: safeHtmlString(),
 });
 
 export const GalleryDataSchema = z.object({

@@ -43,3 +43,7 @@ RICH_TEXT_STORAGE_RESEARCH.md
 RESEARCH_FINDINGS.md
 
 coverage/
+
+.github/instructioins/
+.github/prompts/
+.github/copilot-instructions.md

@@ -1,0 +1,4 @@
+-- NOTE: The GIN index on body_tsv (idx_news_fts) and the GENERATED ALWAYS AS
+-- expression were intentionally preserved. Prisma incorrectly attempted to drop
+-- both because it cannot introspect raw-SQL-managed columns/indexes. No DDL
+-- changes are needed here for body_tsv — the column and its index remain intact.

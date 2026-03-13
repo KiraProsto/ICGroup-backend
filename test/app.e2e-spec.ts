@@ -1,15 +1,46 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { HealthCheckService } from '@nestjs/terminus';
 import request from 'supertest';
-import { AppModule } from '../src/app.module.js';
+import { AppController } from '../src/app.controller.js';
 import { configureApp } from '../src/app.setup.js';
+import { AppService } from '../src/app.service.js';
+import { DbHealthIndicator } from '../src/modules/health/db-health.indicator.js';
+import { RedisHealthIndicator } from '../src/modules/health/redis-health.indicator.js';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication;
 
+  const healthCheckService = {
+    check: jest.fn(),
+  };
+
+  const dbHealthIndicator = {
+    pingCheck: jest.fn(),
+  };
+
+  const redisHealthIndicator = {
+    pingCheck: jest.fn(),
+  };
+
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
+      controllers: [AppController],
+      providers: [
+        AppService,
+        {
+          provide: HealthCheckService,
+          useValue: healthCheckService,
+        },
+        {
+          provide: DbHealthIndicator,
+          useValue: dbHealthIndicator,
+        },
+        {
+          provide: RedisHealthIndicator,
+          useValue: redisHealthIndicator,
+        },
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();

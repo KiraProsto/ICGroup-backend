@@ -23,6 +23,7 @@ import {
 import type { CreatePageDto } from './dto/create-page.dto.js';
 import type { ListPagesQueryDto } from './dto/list-pages-query.dto.js';
 import type { UpsertPageDto } from './dto/upsert-page.dto.js';
+import type { UpdatePageDto } from './dto/update-page.dto.js';
 import type {
   PageResponseDto,
   PageSectionResponseDto,
@@ -136,7 +137,7 @@ function toAuditSnapshot(page: PageRow): Record<string, unknown> {
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
-const SERIALIZABLE_RETRY_LIMIT = 3;
+const SERIALIZABLE_RETRY_LIMIT = 5;
 /**
  * PagesService manages dynamic pages identified by a unique slug.
  *
@@ -198,7 +199,7 @@ export class PagesService {
       this.prisma.page.findMany({
         where,
         select: PAGE_SELECT,
-        orderBy: { createdAt: 'asc' },
+        orderBy: { updatedAt: 'desc' },
         skip: (page - 1) * perPage,
         take: perPage,
       }),
@@ -227,6 +228,34 @@ export class PagesService {
 
     const { sections, ...pageRow } = result;
     return mapPage(pageRow, sections);
+  }
+
+  // ─── updateName ──────────────────────────────────────────────────────────
+
+  async updateName(
+    slug: string,
+    dto: UpdatePageDto,
+    actor: AuthenticatedUser,
+  ): Promise<PageSummaryResponseDto> {
+    const existing = await this.findPageOrThrow(slug);
+    const before = toAuditSnapshot(existing);
+
+    const updated = await this.prisma.page.update({
+      where: { id: existing.id },
+      data: { name: dto.name },
+      select: PAGE_SELECT,
+    });
+
+    await this.auditService.logAsync({
+      actorId: actor.id,
+      action: AuditAction.UPDATE,
+      resourceType: AuditResourceType.Page,
+      resourceId: existing.id,
+      beforeSnapshot: before,
+      afterSnapshot: toAuditSnapshot(updated),
+    });
+
+    return mapPageSummary(updated);
   }
 
   // ─── replaceSections ────────────────────────────────────────────────────────
@@ -331,8 +360,16 @@ export class PagesService {
         data: { status: ContentStatus.PUBLISHED, publishedAt: new Date() },
         select: PAGE_WITH_SECTIONS_SELECT,
       })
-      .catch((e: unknown) => {
+      .catch(async (e: unknown) => {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+          // Re-read to distinguish between "deleted" and "already published".
+          const current = await this.prisma.page.findUnique({
+            where: { id: page.id },
+            select: { status: true },
+          });
+          if (!current) {
+            throw new NotFoundException(`Page "${slug}" not found`);
+          }
           throw new ConflictException(`Page "${slug}" is already published`);
         }
         throw e;
@@ -374,7 +411,10 @@ export class PagesService {
             where: { id: page.id },
             select: { status: true },
           });
-          if (current?.status === ContentStatus.DRAFT) {
+          if (!current) {
+            throw new NotFoundException(`Page "${slug}" not found`);
+          }
+          if (current.status === ContentStatus.DRAFT) {
             throw new ConflictException(`Cannot archive a DRAFT page. Publish it first.`);
           }
           throw new ConflictException(`Page "${slug}" is already archived`);
@@ -431,7 +471,7 @@ export class PagesService {
           error.code === 'P2034' &&
           attempt < SERIALIZABLE_RETRY_LIMIT
         ) {
-          await this.sleep(Math.random() * Math.min(100, 10 * 2 ** (attempt - 1)));
+          await this.sleep(50 * Math.min(2 ** (attempt - 1), 10) + Math.random() * 50);
           continue;
         }
         throw error;
