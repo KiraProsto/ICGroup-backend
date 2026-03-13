@@ -761,13 +761,13 @@ export class NewsService {
     // Zod validation — pure, no DB needed
     const validatedData = this.parseCardData(dto.type, dto.data);
 
-    // Verify publication reference outside the tx (fast-fail before acquiring the lock).
-    // Serializable isolation ensures the referenced article cannot be unpublished
-    // between this check and the commit without triggering a serialization conflict.
-    await this.assertPublicationCardReference(articleId, dto.type, validatedData);
-
     const created = await this.withSerializableTx(async (tx) => {
-      // Re-verify article mutability inside the tx so concurrent publishes are caught.
+      // Verify publication reference inside the tx so the read participates in
+      // Serializable isolation — prevents a referenced article from being
+      // unpublished between this check and the commit.
+      await this.assertPublicationCardReference(articleId, dto.type, validatedData, tx);
+
+      // Verify article mutability inside the tx so concurrent publishes are caught.
       const article = await tx.newsArticle.findFirst({
         where: { id: articleId, deletedAt: null },
         select: { id: true, status: true },
@@ -868,7 +868,7 @@ export class NewsService {
       // 3. Validate and apply data update (type is immutable after creation)
       if (dto.data !== undefined) {
         const validatedData = this.parseCardData(card.type, dto.data);
-        await this.assertPublicationCardReference(articleId, card.type, validatedData);
+        await this.assertPublicationCardReference(articleId, card.type, validatedData, tx);
         await tx.articleCard.update({
           where: { id: cardId },
           data: { data: validatedData as Prisma.InputJsonValue },
@@ -1120,6 +1120,7 @@ export class NewsService {
     articleId: string,
     type: ArticleCardType,
     data: Record<string, unknown>,
+    tx?: Prisma.TransactionClient,
   ): Promise<void> {
     if (type !== ArticleCardType.PUBLICATION) return;
 
@@ -1128,7 +1129,8 @@ export class NewsService {
       throw new BadRequestException('Publication cards cannot reference the same article');
     }
 
-    const referencedArticle = await this.prisma.newsArticle.findFirst({
+    const db = tx ?? this.prisma;
+    const referencedArticle = await db.newsArticle.findFirst({
       where: {
         id: publicationArticleId,
         deletedAt: null,

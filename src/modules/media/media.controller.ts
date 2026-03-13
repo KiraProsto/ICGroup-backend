@@ -22,6 +22,7 @@ import {
 import { memoryStorage } from 'multer';
 import { CheckPolicies } from '../casl/decorators/check-policies.decorator.js';
 import { StorageService } from '../storage/storage.service.js';
+import { ApiResponseDto } from '../../common/dto/api-response.dto.js';
 import { UploadMediaResponseDto } from './dto/upload-media-response.dto.js';
 import { MimeTypeValidator } from './validators/mime-type.validator.js';
 
@@ -86,7 +87,10 @@ export class MediaController {
       required: ['file'],
     },
   })
-  @ApiCreatedResponse({ type: UploadMediaResponseDto, description: 'File uploaded successfully' })
+  @ApiCreatedResponse({
+    type: ApiResponseDto(UploadMediaResponseDto),
+    description: 'File uploaded successfully',
+  })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   @ApiForbiddenResponse({ description: 'Insufficient permissions (CM or SA required)' })
   @ApiUnprocessableEntityResponse({ description: 'File type or size validation failed' })
@@ -99,16 +103,17 @@ export class MediaController {
     )
     file: Express.Multer.File,
   ): Promise<UploadMediaResponseDto> {
+    const normalizedMimeType = file.mimetype.toLowerCase().split(';', 1)[0].trim();
     const result = await this.storageService.upload({
       buffer: file.buffer,
-      mimeType: file.mimetype,
+      mimeType: normalizedMimeType,
       originalName: file.originalname,
     });
 
     return {
       url: result.url,
       key: result.key,
-      mimeType: file.mimetype,
+      mimeType: normalizedMimeType,
       size: file.size,
     };
   }

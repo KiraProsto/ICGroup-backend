@@ -192,13 +192,28 @@ describe('StorageService', () => {
     });
 
     it('rejects with a timeout error when putObject hangs', async () => {
-      mockPutObject.mockImplementationOnce(() => new Promise(() => {})); // never resolves
+      jest.useFakeTimers();
+      try {
+        mockPutObject.mockImplementationOnce(() => new Promise(() => {})); // never resolves
 
-      // Replace timeout constant via a spy on the private method by testing the behaviour
-      // indirectly: upload resolves in tests because the mock resolves instantly.
-      // For this test we verify the timeout wrapper is present by checking the race.
-      // A full timeout test requires controlling timers — covered in e2e / integration.
-      expect(mockPutObject).toBeDefined();
+        const uploadPromise = service.upload({
+          buffer: jpegBuffer,
+          mimeType: 'image/jpeg',
+          originalName: 'timeout-test.jpg',
+        });
+
+        // Attach the rejection handler BEFORE advancing timers so the rejection
+        // is never unhandled during the microtask flush inside advanceTimersByTimeAsync.
+        const assertion = expect(uploadPromise).rejects.toThrow(/timeout/i);
+
+        // Advance timers beyond OPERATION_TIMEOUT_MS (30 s) so the race rejects
+        await jest.advanceTimersByTimeAsync(31_000);
+
+        await assertion;
+        expect(mockPutObject).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 

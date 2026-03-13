@@ -218,6 +218,7 @@ export class NewsController {
 
   // ─── Preview ──────────────────────────────────────────────────────────────
 
+  @Get(':id/preview')
   @CheckPolicies((ability) => ability.can('read', 'NewsArticle'))
   @ApiOperation({
     summary: 'Preview an article with on-the-fly compiled bodyHtml (works for DRAFT articles).',
@@ -243,7 +244,7 @@ export class NewsController {
       'Restricted to CONTENT_MANAGER and SUPER_ADMIN — raw ad-tag HTML is never returned by the standard GET endpoint.',
   })
   @ApiParam({ name: 'id', description: 'Article UUID' })
-  @ApiOkResponse({ type: AdBannerCodeResponseDto })
+  @ApiOkResponse({ type: ApiResponseDto(AdBannerCodeResponseDto) })
   @ApiNotFoundResponse({ type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })

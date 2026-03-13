@@ -114,9 +114,17 @@ export class StorageService implements OnModuleInit {
    */
   private async ensureBucketWithPublicPolicy(bucket: string): Promise<void> {
     try {
-      const exists = await this.client.bucketExists(bucket);
+      const exists = await this.withTimeout(
+        this.client.bucketExists(bucket),
+        OPERATION_TIMEOUT_MS,
+        `bucketExists timeout: ${bucket}`,
+      );
       if (!exists) {
-        await this.client.makeBucket(bucket);
+        await this.withTimeout(
+          this.client.makeBucket(bucket),
+          OPERATION_TIMEOUT_MS,
+          `makeBucket timeout: ${bucket}`,
+        );
         this.logger.log(`Created bucket: ${bucket}`);
       }
       await this.applyPublicReadPolicy(bucket);
@@ -141,7 +149,11 @@ export class StorageService implements OnModuleInit {
         },
       ],
     };
-    await this.client.setBucketPolicy(bucket, JSON.stringify(policy));
+    await this.withTimeout(
+      this.client.setBucketPolicy(bucket, JSON.stringify(policy)),
+      OPERATION_TIMEOUT_MS,
+      `setBucketPolicy timeout: ${bucket}`,
+    );
   }
 
   /**
@@ -183,9 +195,15 @@ export class StorageService implements OnModuleInit {
 
   /** Wraps a promise with a timeout to avoid hanging indefinitely on storage calls. */
   private withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
-    ]);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(label)), ms);
+      // Prevent the timer from keeping the Node.js event loop alive on its own.
+      // Guard required: fake timers (used in tests) don't implement .unref().
+      timeoutId.unref?.();
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+      clearTimeout(timeoutId);
+    }) as Promise<T>;
   }
 }
