@@ -18,6 +18,7 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { CaslModule } from './modules/casl/casl.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { PagesModule } from './modules/pages/pages.module.js';
+import { NewsModule } from './modules/news/news.module.js';
 import { RedisThrottlerStorage } from './common/throttler-storage.js';
 
 @Module({
@@ -121,8 +122,9 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
     // ── User management (SUPER_ADMIN only) ────────────────
     UsersModule,
 
-    // ── Content management ─────────────────────────────────
+    // ── Content management ─────────────────────────────
     PagesModule,
+    NewsModule,
 
     // Feature modules will be added here in subsequent tasks:
     // AuthModule, UsersModule, ContentModule, SalesModule,

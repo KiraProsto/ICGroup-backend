@@ -49,17 +49,32 @@ describe('tiptap extensions helpers', () => {
       ],
     };
 
-    generateHtmlMock.mockReturnValue('<rendered-html />');
+    generateHtmlMock.mockReturnValue(
+      '<h2 class="text-center">Release notes</h2><p>Read the <a href="https://example.com">full article</a></p>',
+    );
 
     const html = renderToHtml(content);
 
-    expect(html).toBe('<rendered-html />');
+    expect(html).toBe(
+      '<h2 class="text-center">Release notes</h2><p>Read the <a href="https://example.com" rel="noopener noreferrer">full article</a></p>',
+    );
     expect(generateHtmlMock).toHaveBeenCalledTimes(1);
     expect(generateHtmlMock).toHaveBeenCalledWith(content, expect.any(Array));
 
     const [, extensions] = generateHtmlMock.mock.calls[0] ?? [];
 
     expect(extensions).toHaveLength(TIPTAP_EXTENSIONS.length);
+  });
+
+  it('strips XSS payloads from generateHTML output', () => {
+    const content: JSONContent = { type: 'doc', content: [] };
+    generateHtmlMock.mockReturnValue('<p onclick="alert(1)">Click</p><script>evil()</script>');
+
+    const html = renderToHtml(content);
+
+    expect(html).not.toContain('onclick');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('<p>Click</p>');
   });
 
   it('extracts plain text for FTS with stable block separators', () => {

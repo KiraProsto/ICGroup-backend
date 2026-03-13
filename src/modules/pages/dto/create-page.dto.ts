@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { IsString, Length, Matches } from 'class-validator';
 
 export class CreatePageDto {
@@ -17,6 +18,7 @@ export class CreatePageDto {
     example: 'Акционерам и инвесторам',
     description: 'Human-readable page title displayed in the admin panel',
   })
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @Length(1, 200)
   name!: string;

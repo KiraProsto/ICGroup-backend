@@ -240,11 +240,18 @@ export class PagesService {
     const existing = await this.findPageOrThrow(slug);
     const before = toAuditSnapshot(existing);
 
-    const updated = await this.prisma.page.update({
-      where: { id: existing.id },
-      data: { name: dto.name },
-      select: PAGE_SELECT,
-    });
+    const updated = await this.prisma.page
+      .update({
+        where: { id: existing.id },
+        data: { name: dto.name },
+        select: PAGE_SELECT,
+      })
+      .catch(async (e: unknown) => {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+          throw new NotFoundException(`Page "${slug}" not found`);
+        }
+        throw e;
+      });
 
     await this.auditService.logAsync({
       actorId: actor.id,
@@ -464,6 +471,7 @@ export class PagesService {
       try {
         return await this.prisma.$transaction(operation, {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          timeout: 30_000,
         });
       } catch (error) {
         if (
