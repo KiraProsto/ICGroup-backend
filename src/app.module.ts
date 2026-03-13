@@ -19,6 +19,7 @@ import { CaslModule } from './modules/casl/casl.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { PagesModule } from './modules/pages/pages.module.js';
 import { NewsModule } from './modules/news/news.module.js';
+import { MediaModule } from './modules/media/media.module.js';
 import { RedisThrottlerStorage } from './common/throttler-storage.js';
 
 @Module({
@@ -56,6 +57,9 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
           otherwise: Joi.string().min(1).required(),
         }),
         MINIO_BUCKET_CONTENT: Joi.string().default('content-images'),
+        // Optional: CDN / S3 base URL for serving uploaded objects.
+        // Defaults to the MinIO endpoint URL when not set.
+        MINIO_PUBLIC_URL: Joi.string().uri().optional(),
         DB_POOL_MAX: Joi.number().integer().min(1).max(100).default(10),
         DB_POOL_CONNECT_TIMEOUT_MS: Joi.number().integer().default(3000),
         DB_POOL_IDLE_TIMEOUT_MS: Joi.number().integer().default(10000),
@@ -125,6 +129,7 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
     // ── Content management ─────────────────────────────
     PagesModule,
     NewsModule,
+    MediaModule,
 
     // Feature modules will be added here in subsequent tasks:
     // AuthModule, UsersModule, ContentModule, SalesModule,

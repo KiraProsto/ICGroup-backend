@@ -22,6 +22,9 @@ COPY . .
 # Generate Prisma client
 RUN npx prisma generate
 
+# Make dev entrypoint executable (Windows host may not preserve Unix permissions)
+RUN chmod +x docker-entrypoint.dev.sh
+
 # Create dist dir and ensure node user owns the entire app directory
 RUN mkdir -p /app/dist && chown -R node:node /app
 
@@ -29,6 +32,7 @@ RUN mkdir -p /app/dist && chown -R node:node /app
 USER node
 
 EXPOSE 3000
+ENTRYPOINT ["./docker-entrypoint.dev.sh"]
 CMD ["npm", "run", "start:dev"]
 
 # ─────────────────────────────────────────────────────────────

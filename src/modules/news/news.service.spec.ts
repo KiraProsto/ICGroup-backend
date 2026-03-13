@@ -22,6 +22,7 @@ jest.mock('../../generated/prisma/client.js', () => {
     Prisma: {
       PrismaClientKnownRequestError,
       QueryMode: { insensitive: 'insensitive' },
+      TransactionIsolationLevel: { Serializable: 'Serializable' },
       sql: jest.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values })),
       join: jest.fn((values: unknown[], separator: unknown) => ({ values, separator })),
     },
@@ -138,6 +139,12 @@ describe('NewsService', () => {
     service = module.get(NewsService);
     prisma = module.get(PrismaService) as jest.Mocked<PrismaService>;
     auditService = module.get(AuditService) as jest.Mocked<AuditService>;
+
+    // Default: $transaction executes the callback with `prisma` acting as the
+    // transaction client.  Tests that need to simulate P2034 can override this.
+    (prisma.$transaction as jest.Mock).mockImplementation(
+      (op: (tx: typeof prisma) => Promise<unknown>) => op(prisma),
+    );
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -400,7 +407,6 @@ describe('NewsService', () => {
       (prisma.articleCard.findMany as jest.Mock).mockResolvedValueOnce([]);
       (prisma.articleCard.create as jest.Mock).mockResolvedValue(textCardRow);
       (prisma.articleCard.findFirst as jest.Mock).mockResolvedValue(textCardRow);
-      (prisma.$transaction as jest.Mock).mockResolvedValue(undefined);
 
       const result = await service.createCard(
         'article-uuid-1',
@@ -496,7 +502,6 @@ describe('NewsService', () => {
             order: i,
           })),
         ); // after reorder
-      (prisma.$transaction as jest.Mock).mockResolvedValue(undefined);
 
       const result = await service.reorderCards(
         'article-uuid-1',

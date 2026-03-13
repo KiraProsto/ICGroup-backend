@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ArrayMinSize, ArrayUnique, IsArray, IsString } from 'class-validator';
+import { ArrayMinSize, ArrayUnique, IsArray, IsUUID } from 'class-validator';
 
 /**
  * PUT /admin/content/news/:articleId/cards/order
@@ -20,6 +20,6 @@ export class ReorderCardsDto {
   @IsArray()
   @ArrayMinSize(1)
   @ArrayUnique()
-  @IsString({ each: true })
+  @IsUUID('4', { each: true })
   cardIds!: string[];
 }

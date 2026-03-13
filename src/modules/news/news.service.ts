@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
 import { ZodError } from 'zod';
 import { Prisma } from '../../generated/prisma/client.js';
 import {
@@ -12,6 +13,7 @@ import {
   ArticleCardType,
   ArticleType,
   ContentStatus,
+  Role,
 } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -37,6 +39,7 @@ import type { CreateCardDto } from './dto/create-card.dto.js';
 import type { UpdateCardDto } from './dto/update-card.dto.js';
 import type { ReorderCardsDto } from './dto/reorder-cards.dto.js';
 import type {
+  AdBannerCodeResponseDto,
   CardResponseDto,
   NewsPreviewResponseDto,
   NewsResponseDto,
@@ -44,6 +47,7 @@ import type {
 } from './dto/news-response.dto.js';
 
 const CARD_ORDER_TEMP_OFFSET = 1_000_000;
+const SERIALIZABLE_RETRY_LIMIT = 5;
 
 // ─── Cyrillic transliteration map ────────────────────────────────────────────
 
@@ -220,7 +224,7 @@ function mapFull(row: ArticleFullRow, cards: CardRow[]): NewsResponseDto {
     rssYandexDzen: row.rssYandexDzen,
     rssYandexNews: row.rssYandexNews,
     rssDefault: row.rssDefault,
-    adBannerCode: row.adBannerCode,
+    hasAdBannerCode: row.adBannerCode !== null,
     adBannerImage: row.adBannerImage,
     cards: cards.map(mapCard),
   };
@@ -402,7 +406,7 @@ export class NewsService {
           adBannerCode:
             dto.adBannerCode !== undefined ? normalizeAdBannerCode(dto.adBannerCode) : null,
           adBannerImage: dto.adBannerImage ?? null,
-          authorId: dto.authorId ?? actor.id,
+          authorId: actor.role === Role.SUPER_ADMIN && dto.authorId ? dto.authorId : actor.id,
         },
         select: ARTICLE_SUMMARY_SELECT,
       })
@@ -516,7 +520,8 @@ export class NewsService {
         adBannerCode: normalizeAdBannerCode(dto.adBannerCode),
       }),
       ...(dto.adBannerImage !== undefined && { adBannerImage: dto.adBannerImage }),
-      ...(dto.authorId !== undefined && { authorId: dto.authorId }),
+      ...(dto.authorId !== undefined &&
+        actor.role === Role.SUPER_ADMIN && { authorId: dto.authorId }),
     };
 
     const updated = await this.prisma.newsArticle.update({
@@ -717,6 +722,25 @@ export class NewsService {
     };
   }
 
+  // ─── Ad-banner code (restricted read) ────────────────────────────────────
+
+  /**
+   * Returns the raw adBannerCode for an article.
+   * Intentionally separated from the standard GET to restrict access — only
+   * callers with 'update NewsArticle' permission (CONTENT_MANAGER / SUPER_ADMIN)
+   * should ever receive raw ad-tag HTML snippets.
+   */
+  async getAdBannerCode(id: string): Promise<AdBannerCodeResponseDto> {
+    const article = await this.findArticleOrThrow(id, {
+      id: true,
+      adBannerCode: true,
+    } as const);
+    return {
+      id: (article as { id: string; adBannerCode: string | null }).id,
+      adBannerCode: (article as { id: string; adBannerCode: string | null }).adBannerCode,
+    };
+  }
+
   // ─── Cards CRUD ───────────────────────────────────────────────────────────
 
   async findCards(articleId: string): Promise<CardResponseDto[]> {
@@ -734,40 +758,69 @@ export class NewsService {
     dto: CreateCardDto,
     actor: AuthenticatedUser,
   ): Promise<CardResponseDto> {
-    await this.findMutableArticleOrThrow(articleId);
-
-    // Zod validation
+    // Zod validation — pure, no DB needed
     const validatedData = this.parseCardData(dto.type, dto.data);
+
+    // Verify publication reference outside the tx (fast-fail before acquiring the lock).
+    // Serializable isolation ensures the referenced article cannot be unpublished
+    // between this check and the commit without triggering a serialization conflict.
     await this.assertPublicationCardReference(articleId, dto.type, validatedData);
 
-    const existingCards = await this.prisma.articleCard.findMany({
-      where: { articleId },
-      select: { id: true },
-      orderBy: { order: 'asc' },
+    const created = await this.withSerializableTx(async (tx) => {
+      // Re-verify article mutability inside the tx so concurrent publishes are caught.
+      const article = await tx.newsArticle.findFirst({
+        where: { id: articleId, deletedAt: null },
+        select: { id: true, status: true },
+      });
+      if (!article) {
+        throw new NotFoundException(`News article "${articleId}" not found`);
+      }
+      if (article.status === ContentStatus.PUBLISHED) {
+        throw new ConflictException(
+          `News article "${articleId}" is published — revert it to draft before editing cards`,
+        );
+      }
+
+      // Serializable read prevents concurrent inserts from picking the same position.
+      const existingCards = await tx.articleCard.findMany({
+        where: { articleId },
+        select: { id: true },
+        orderBy: { order: 'asc' },
+      });
+
+      const insertIndex = dto.order ?? existingCards.length;
+      if (insertIndex > existingCards.length) {
+        throw new BadRequestException(
+          `Card order ${insertIndex} is out of bounds for article with ${existingCards.length} cards`,
+        );
+      }
+
+      // Insert with a temporary high order value to avoid unique-index conflicts
+      // during the creation step before the bulk-order update.
+      const card = await tx.articleCard.create({
+        data: {
+          articleId,
+          type: dto.type,
+          order: CARD_ORDER_TEMP_OFFSET + existingCards.length,
+          data: validatedData as Prisma.InputJsonValue,
+        },
+        select: CARD_SELECT,
+      });
+
+      const orderedCardIds = existingCards.map((c) => c.id);
+      orderedCardIds.splice(insertIndex, 0, card.id);
+      await this.persistCardOrder(orderedCardIds, tx);
+
+      // Re-read to get settled order value
+      const finalCard = await tx.articleCard.findFirst({
+        where: { id: card.id, articleId },
+        select: CARD_SELECT,
+      });
+      if (!finalCard) {
+        throw new NotFoundException(`Card "${card.id}" unexpectedly missing after creation`);
+      }
+      return finalCard;
     });
-
-    const insertIndex = dto.order ?? existingCards.length;
-    if (insertIndex > existingCards.length) {
-      throw new BadRequestException(
-        `Card order ${insertIndex} is out of bounds for article with ${existingCards.length} cards`,
-      );
-    }
-
-    const card = await this.prisma.articleCard.create({
-      data: {
-        articleId,
-        type: dto.type,
-        order: CARD_ORDER_TEMP_OFFSET + existingCards.length,
-        data: validatedData as Prisma.InputJsonValue,
-      },
-      select: CARD_SELECT,
-    });
-
-    const orderedCardIds = existingCards.map((existingCard) => existingCard.id);
-    orderedCardIds.splice(insertIndex, 0, card.id);
-    await this.persistCardOrder(orderedCardIds);
-
-    const created = await this.findCardOrThrow(articleId, card.id);
 
     await this.auditService.logAsync({
       actorId: actor.id,
@@ -788,50 +841,79 @@ export class NewsService {
     dto: UpdateCardDto,
     actor: AuthenticatedUser,
   ): Promise<CardResponseDto> {
-    await this.findMutableArticleOrThrow(articleId);
-    const card = await this.findCardOrThrow(articleId, cardId);
-
-    // Validate updated data against the card's immutable type
-    const validatedData =
-      dto.data !== undefined ? this.parseCardData(card.type, dto.data) : undefined;
-    if (validatedData !== undefined) {
-      await this.assertPublicationCardReference(articleId, card.type, validatedData);
-      await this.prisma.articleCard.update({
-        where: { id: cardId },
-        data: {
-          data: validatedData as Prisma.InputJsonValue,
-        },
+    const { before, updated } = await this.withSerializableTx(async (tx) => {
+      // 1. Verify article mutability inside tx
+      const article = await tx.newsArticle.findFirst({
+        where: { id: articleId, deletedAt: null },
+        select: { id: true, status: true },
       });
-    }
-
-    if (dto.order !== undefined && dto.order !== card.order) {
-      const existingCards = await this.prisma.articleCard.findMany({
-        where: { articleId },
-        select: { id: true },
-        orderBy: { order: 'asc' },
-      });
-
-      if (dto.order >= existingCards.length) {
-        throw new BadRequestException(
-          `Card order ${dto.order} is out of bounds for article with ${existingCards.length} cards`,
+      if (!article) {
+        throw new NotFoundException(`News article "${articleId}" not found`);
+      }
+      if (article.status === ContentStatus.PUBLISHED) {
+        throw new ConflictException(
+          `News article "${articleId}" is published — revert it to draft before editing cards`,
         );
       }
 
-      const orderedCardIds = existingCards.map((existingCard) => existingCard.id);
-      const currentIndex = orderedCardIds.indexOf(cardId);
-      orderedCardIds.splice(currentIndex, 1);
-      orderedCardIds.splice(dto.order, 0, cardId);
-      await this.persistCardOrder(orderedCardIds);
-    }
+      // 2. Read card inside tx
+      const card = await tx.articleCard.findFirst({
+        where: { id: cardId, articleId },
+        select: CARD_SELECT,
+      });
+      if (!card) {
+        throw new NotFoundException(`Card "${cardId}" not found in article "${articleId}"`);
+      }
 
-    const updated = await this.findCardOrThrow(articleId, cardId);
+      // 3. Validate and apply data update (type is immutable after creation)
+      if (dto.data !== undefined) {
+        const validatedData = this.parseCardData(card.type, dto.data);
+        await this.assertPublicationCardReference(articleId, card.type, validatedData);
+        await tx.articleCard.update({
+          where: { id: cardId },
+          data: { data: validatedData as Prisma.InputJsonValue },
+        });
+      }
+
+      // 4. Apply order change atomically within the same tx
+      if (dto.order !== undefined && dto.order !== card.order) {
+        const existingCards = await tx.articleCard.findMany({
+          where: { articleId },
+          select: { id: true },
+          orderBy: { order: 'asc' },
+        });
+
+        if (dto.order >= existingCards.length) {
+          throw new BadRequestException(
+            `Card order ${dto.order} is out of bounds for article with ${existingCards.length} cards`,
+          );
+        }
+
+        const orderedCardIds = existingCards.map((c) => c.id);
+        const currentIndex = orderedCardIds.indexOf(cardId);
+        orderedCardIds.splice(currentIndex, 1);
+        orderedCardIds.splice(dto.order, 0, cardId);
+        await this.persistCardOrder(orderedCardIds, tx);
+      }
+
+      // 5. Re-read settled state
+      const updatedCard = await tx.articleCard.findFirst({
+        where: { id: cardId, articleId },
+        select: CARD_SELECT,
+      });
+      if (!updatedCard) {
+        throw new NotFoundException(`Card "${cardId}" unexpectedly missing after update`);
+      }
+
+      return { before: card, updated: updatedCard };
+    });
 
     await this.auditService.logAsync({
       actorId: actor.id,
       action: AuditAction.UPDATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: articleId,
-      beforeSnapshot: { cardId, order: card.order },
+      beforeSnapshot: { cardId, order: before.order },
       afterSnapshot: { cardId, order: updated.order },
       metadata: { cardId },
     });
@@ -840,26 +922,53 @@ export class NewsService {
   }
 
   async deleteCard(articleId: string, cardId: string, actor: AuthenticatedUser): Promise<void> {
-    await this.findMutableArticleOrThrow(articleId);
-    const card = await this.findCardOrThrow(articleId, cardId);
+    const deletedCard = await this.withSerializableTx(async (tx) => {
+      // 1. Verify article mutability
+      const article = await tx.newsArticle.findFirst({
+        where: { id: articleId, deletedAt: null },
+        select: { id: true, status: true },
+      });
+      if (!article) {
+        throw new NotFoundException(`News article "${articleId}" not found`);
+      }
+      if (article.status === ContentStatus.PUBLISHED) {
+        throw new ConflictException(
+          `News article "${articleId}" is published — revert it to draft before editing cards`,
+        );
+      }
 
-    await this.prisma.articleCard.delete({ where: { id: cardId } });
+      // 2. Find the card
+      const card = await tx.articleCard.findFirst({
+        where: { id: cardId, articleId },
+        select: CARD_SELECT,
+      });
+      if (!card) {
+        throw new NotFoundException(`Card "${cardId}" not found in article "${articleId}"`);
+      }
 
-    const remainingCardIds = (
-      await this.prisma.articleCard.findMany({
+      // 3. Delete the card
+      await tx.articleCard.delete({ where: { id: cardId } });
+
+      // 4. Compact order values for the remaining cards
+      const remainingCards = await tx.articleCard.findMany({
         where: { articleId },
         select: { id: true },
         orderBy: { order: 'asc' },
-      })
-    ).map((remainingCard) => remainingCard.id);
-    await this.persistCardOrder(remainingCardIds);
+      });
+      await this.persistCardOrder(
+        remainingCards.map((c) => c.id),
+        tx,
+      );
+
+      return card;
+    });
 
     await this.auditService.logAsync({
       actorId: actor.id,
       action: AuditAction.DELETE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: articleId,
-      beforeSnapshot: { cardId, type: card.type, order: card.order },
+      beforeSnapshot: { cardId, type: deletedCard.type, order: deletedCard.order },
       afterSnapshot: null,
       metadata: { cardId },
     });
@@ -875,36 +984,56 @@ export class NewsService {
     dto: ReorderCardsDto,
     actor: AuthenticatedUser,
   ): Promise<CardResponseDto[]> {
-    await this.findMutableArticleOrThrow(articleId);
+    const { beforeOrder, cards } = await this.withSerializableTx(async (tx) => {
+      // 1. Verify mutability inside tx so concurrent publishes are caught
+      const article = await tx.newsArticle.findFirst({
+        where: { id: articleId, deletedAt: null },
+        select: { id: true, status: true },
+      });
+      if (!article) {
+        throw new NotFoundException(`News article "${articleId}" not found`);
+      }
+      if (article.status === ContentStatus.PUBLISHED) {
+        throw new ConflictException(
+          `News article "${articleId}" is published — revert it to draft before editing cards`,
+        );
+      }
 
-    const existing = await this.prisma.articleCard.findMany({
-      where: { articleId },
-      select: { id: true, order: true },
-      orderBy: { order: 'asc' },
-    });
+      // 2. Read existing cards with a serializable lock to prevent concurrent structural changes
+      const existing = await tx.articleCard.findMany({
+        where: { articleId },
+        select: { id: true, order: true },
+        orderBy: { order: 'asc' },
+      });
 
-    const uniqueRequestedIds = new Set(dto.cardIds);
-    if (uniqueRequestedIds.size !== dto.cardIds.length) {
-      throw new BadRequestException('Reorder list contains duplicate card IDs');
-    }
+      // 3. Validate the submitted order list
+      const uniqueRequestedIds = new Set(dto.cardIds);
+      if (uniqueRequestedIds.size !== dto.cardIds.length) {
+        throw new BadRequestException('Reorder list contains duplicate card IDs');
+      }
 
-    const existingIds = new Set(existing.map((c) => c.id));
-    const invalidIds = dto.cardIds.filter((cid) => !existingIds.has(cid));
-    if (invalidIds.length > 0) {
-      throw new BadRequestException(`Card IDs not found in article: ${invalidIds.join(', ')}`);
-    }
-    if (dto.cardIds.length !== existingIds.size) {
-      throw new BadRequestException(
-        `Reorder list must include all ${existingIds.size} cards of the article`,
-      );
-    }
+      const existingIds = new Set(existing.map((c) => c.id));
+      const invalidIds = dto.cardIds.filter((cid) => !existingIds.has(cid));
+      if (invalidIds.length > 0) {
+        throw new BadRequestException(`Card IDs not found in article: ${invalidIds.join(', ')}`);
+      }
+      if (dto.cardIds.length !== existingIds.size) {
+        throw new BadRequestException(
+          `Reorder list must include all ${existingIds.size} cards of the article`,
+        );
+      }
 
-    await this.persistCardOrder(dto.cardIds);
+      // 4. Apply new order within the tx
+      await this.persistCardOrder(dto.cardIds, tx);
 
-    const cards = await this.prisma.articleCard.findMany({
-      where: { articleId },
-      select: CARD_SELECT,
-      orderBy: { order: 'asc' },
+      // 5. Return updated cards
+      const updatedCards = await tx.articleCard.findMany({
+        where: { articleId },
+        select: CARD_SELECT,
+        orderBy: { order: 'asc' },
+      });
+
+      return { beforeOrder: existing.map((c) => c.id), cards: updatedCards };
     });
 
     await this.auditService.logAsync({
@@ -912,7 +1041,7 @@ export class NewsService {
       action: AuditAction.UPDATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: articleId,
-      beforeSnapshot: { cardOrder: existing.map((c) => c.id) },
+      beforeSnapshot: { cardOrder: beforeOrder },
       afterSnapshot: { cardOrder: dto.cardIds },
       metadata: { operation: 'reorder' },
     });
@@ -947,19 +1076,6 @@ export class NewsService {
     return card;
   }
 
-  private async findMutableArticleOrThrow(articleId: string): Promise<void> {
-    const article = await this.findArticleOrThrow(articleId, {
-      id: true,
-      status: true,
-    } as const);
-
-    if (article.status === ContentStatus.PUBLISHED) {
-      throw new ConflictException(
-        `News article "${articleId}" is published — revert it to draft before editing cards`,
-      );
-    }
-  }
-
   /**
    * Generates a unique slug by appending a short numeric suffix on conflict.
    * Tries the base slug first, then base-2, base-3, … up to 20 attempts.
@@ -974,7 +1090,6 @@ export class NewsService {
       if (!exists) return candidate;
     }
     // Extremely unlikely: fall back to UUID suffix
-    const { v4: uuidv4 } = await import('uuid');
     return `${base}-${uuidv4().slice(0, 8)}`;
   }
 
@@ -1029,7 +1144,10 @@ export class NewsService {
     }
   }
 
-  private async persistCardOrder(orderedCardIds: string[]): Promise<void> {
+  private async persistCardOrder(
+    orderedCardIds: string[],
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
     if (orderedCardIds.length === 0) return;
 
     const cases = orderedCardIds.map(
@@ -1037,13 +1155,19 @@ export class NewsService {
     );
     const idList = Prisma.join(orderedCardIds.map((id) => Prisma.sql`${id}::uuid`));
 
-    await this.prisma.$executeRaw(Prisma.sql`
+    const sql = Prisma.sql`
       UPDATE "article_cards"
       SET "order" = CASE "id"
         ${Prisma.join(cases, ' ')}
       END
       WHERE "id" IN (${idList})
-    `);
+    `;
+
+    if (tx) {
+      await tx.$executeRaw(sql);
+    } else {
+      await this.prisma.$executeRaw(sql);
+    }
   }
 
   private async findAllByFullTextSearch({
@@ -1125,8 +1249,8 @@ export class NewsService {
   }
 
   /**
-   * Prefetches referenced articles for all PUBLICATION cards in a batch.
-   * Returns a map keyed by articleId.
+   * Builds a publication-article lookup map used by compileCards.
+   * Called during publish and preview to embed referenced article metadata.
    */
   private async buildPublicationMap(
     cards: CardRow[],
@@ -1153,8 +1277,8 @@ export class NewsService {
     if (articles.length !== pubCardIds.length) {
       const foundArticleIds = new Set(articles.map((article) => article.id));
       const missingArticleIds = pubCardIds.filter((articleId) => !foundArticleIds.has(articleId));
-      throw new BadRequestException(
-        `Publication cards reference unavailable articles: ${missingArticleIds.join(', ')}`,
+      throw new ConflictException(
+        `Publication cards reference unavailable articles (they may have been archived since the card was created): ${missingArticleIds.join(', ')}`,
       );
     }
 
@@ -1163,5 +1287,38 @@ export class NewsService {
         (a) => [a.id, a] as [string, { title: string; coverImage: string | null; slug: string }],
       ),
     );
+  }
+
+  /**
+   * Executes `operation` in a Serializable transaction, retrying up to
+   * SERIALIZABLE_RETRY_LIMIT times on P2034 (serialization conflict) with
+   * exponential backoff + jitter to reduce thundering-herd.
+   */
+  private async withSerializableTx<T>(
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 1; attempt <= SERIALIZABLE_RETRY_LIMIT; attempt++) {
+      try {
+        return await this.prisma.$transaction(operation, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          timeout: 30_000,
+        });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2034' &&
+          attempt < SERIALIZABLE_RETRY_LIMIT
+        ) {
+          await this.sleep(50 * Math.min(2 ** (attempt - 1), 10) + Math.random() * 50);
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new Error('Exceeded serializable transaction retry limit');
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

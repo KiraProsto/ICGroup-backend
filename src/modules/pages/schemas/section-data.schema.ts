@@ -115,9 +115,14 @@ const ALLOWED_HTML_OPTIONS: sanitizeHtml.IOptions = {
       'font-weight': [/^(?:normal|bold|bolder|lighter|[1-9]00)$/],
       'font-style': [/^(?:normal|italic)$/],
       'text-decoration': [/^(?:none|underline|line-through|overline)$/],
-      // Basic color formats: hex, rgb[a], hsl[a], or named colors.
-      color: [/^(?:#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\)|[a-zA-Z]+)$/],
-      'background-color': [/^(?:#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\)|[a-zA-Z]+)$/],
+      // Strict color formats: hex, rgb/rgba/hsl/hsla with numeric args only, or named colors.
+      // Using [^)]* is intentionally avoided — restricting to numeric values prevents CSS injection.
+      color: [
+        /^(?:#[0-9a-fA-F]{3,8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*[0-9.]+)?\s*\)|hsla?\(\s*\d{1,3}\s*,\s*\d{1,3}%\s*,\s*\d{1,3}%(?:\s*,\s*[0-9.]+)?\s*\)|[a-zA-Z]+)$/,
+      ],
+      'background-color': [
+        /^(?:#[0-9a-fA-F]{3,8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*[0-9.]+)?\s*\)|hsla?\(\s*\d{1,3}\s*,\s*\d{1,3}%\s*,\s*\d{1,3}%(?:\s*,\s*[0-9.]+)?\s*\)|[a-zA-Z]+)$/,
+      ],
     },
   },
   allowedSchemes: ['http', 'https', 'mailto', 'tel'],

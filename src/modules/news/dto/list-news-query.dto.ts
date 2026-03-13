@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContentStatus, ArticleType } from '../../../generated/prisma/enums.js';
 
@@ -21,6 +21,7 @@ export class ListNewsQueryDto {
 
   @ApiPropertyOptional({ description: 'Full-text search query', example: 'цифровая экономика' })
   @IsString()
+  @MaxLength(500)
   @IsOptional()
   q?: string;
 
