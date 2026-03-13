@@ -126,6 +126,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.newsArticle;
   }
 
+  get articleCard(): PrismaClientInstance['articleCard'] {
+    return this.prisma.articleCard;
+  }
+
   get company(): PrismaClientInstance['company'] {
     return this.prisma.company;
   }

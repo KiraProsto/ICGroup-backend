@@ -1,3 +1,4 @@
+import sanitizeHtml from 'sanitize-html';
 import { z } from 'zod';
 import { SectionType } from '../../../generated/prisma/enums.js';
 
@@ -61,25 +62,83 @@ export const CtaDataSchema = z.object({
 });
 
 /**
- * Rejects strings that contain HTML/JS injection patterns.
- * Defense-in-depth: content is also expected to be sanitized on the frontend
- * before rendering. If rich-text HTML is needed here, replace this refinement
- * with a server-side sanitize-html call using a strict element/attribute allowlist.
+ * Strict HTML allowlist for TEXT sections.
+ * Only formatting/structure elements that render safely in the admin panel
+ * are permitted. No script, no event handlers, no javascript: URIs.
  */
-const UNSAFE_HTML_RE = /<script[\s>]/i;
-const UNSAFE_ATTR_RE = /\s+on[a-z]+\s*=/i;
-const JAVASCRIPT_PROTO_RE = /javascript\s*:/i;
+const ALLOWED_HTML_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: [
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'p',
+    'br',
+    'hr',
+    'ul',
+    'ol',
+    'li',
+    'strong',
+    'em',
+    'u',
+    's',
+    'code',
+    'pre',
+    'blockquote',
+    'a',
+    'img',
+    'table',
+    'thead',
+    'tbody',
+    'tr',
+    'th',
+    'td',
+    'span',
+    'div',
+    'mark',
+  ],
+  allowedAttributes: {
+    a: ['href', 'title', 'target', 'rel'],
+    img: ['src', 'alt', 'title', 'width', 'height'],
+    th: ['colspan', 'rowspan'],
+    td: ['colspan', 'rowspan'],
+    '*': ['class', 'style'],
+  },
+  // Restrict inline styles to a small, explicit allowlist of safe properties.
+  // This prevents arbitrary CSS from being injected while still allowing
+  // basic text formatting coming from the editor.
+  allowedStyles: {
+    '*': {
+      'text-align': [/^(?:left|right|center|justify)$/],
+      'font-weight': [/^(?:normal|bold|bolder|lighter|[1-9]00)$/],
+      'font-style': [/^(?:normal|italic)$/],
+      'text-decoration': [/^(?:none|underline|line-through|overline)$/],
+      // Basic color formats: hex, rgb[a], hsl[a], or named colors.
+      color: [/^(?:#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\)|[a-zA-Z]+)$/],
+      'background-color': [/^(?:#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\)|[a-zA-Z]+)$/],
+    },
+  },
+  allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+  allowedSchemesByTag: {
+    img: ['http', 'https'],
+  },
+  // Force safe link behaviour
+  transformTags: {
+    a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer' }, true),
+  },
+};
 
 const safeHtmlString = () =>
   z
     .string()
     .min(1)
     .max(50_000)
-    .refine((v) => !UNSAFE_HTML_RE.test(v), { message: '<script> elements are not allowed' })
-    .refine((v) => !UNSAFE_ATTR_RE.test(v), {
-      message: 'Inline event handlers (on*=) are not allowed',
-    })
-    .refine((v) => !JAVASCRIPT_PROTO_RE.test(v), { message: 'javascript: URIs are not allowed' });
+    .transform((v) => sanitizeHtml(v, ALLOWED_HTML_OPTIONS))
+    .refine((v) => v.trim().length > 0, {
+      message: 'HTML content must not be empty after sanitization',
+    });
 
 export const TextDataSchema = z.object({
   content: safeHtmlString(),

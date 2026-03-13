@@ -30,6 +30,7 @@ import {
 } from '../../common/dto/api-response.dto.js';
 import { CheckPolicies } from '../casl/decorators/check-policies.decorator.js';
 import { CurrentUser, type AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
+import { ParseSlugPipe } from '../../common/pipes/parse-slug.pipe.js';
 import { PagesService } from './pages.service.js';
 import { CreatePageDto } from './dto/create-page.dto.js';
 import { UpsertPageDto } from './dto/upsert-page.dto.js';
@@ -44,6 +45,7 @@ import { UpdatePageDto } from './dto/update-page.dto.js';
  *   GET  /              → read Page   → CONTENT_MANAGER, SALES_MANAGER, SUPER_ADMIN
  *   POST /              → create Page → CONTENT_MANAGER, SUPER_ADMIN
  *   GET  /:slug         → read Page   → CONTENT_MANAGER, SALES_MANAGER, SUPER_ADMIN
+ *   PATCH/:slug         → update Page → CONTENT_MANAGER, SUPER_ADMIN
  *   PUT  /:slug         → update Page → CONTENT_MANAGER, SUPER_ADMIN
  *   POST /:slug/publish → publish Page→ CONTENT_MANAGER, SUPER_ADMIN
  *   POST /:slug/archive → archive Page→ CONTENT_MANAGER, SUPER_ADMIN
@@ -96,7 +98,7 @@ export class PagesController {
   @ApiNotFoundResponse({ type: ApiErrorResponseDto, description: 'Page not found' })
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
-  findOne(@Param('slug') slug: string): Promise<PageResponseDto> {
+  findOne(@Param('slug', ParseSlugPipe) slug: string): Promise<PageResponseDto> {
     return this.pagesService.findOne(slug);
   }
 
@@ -112,7 +114,7 @@ export class PagesController {
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   updateName(
-    @Param('slug') slug: string,
+    @Param('slug', ParseSlugPipe) slug: string,
     @Body() dto: UpdatePageDto,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<PageSummaryResponseDto> {
@@ -139,7 +141,7 @@ export class PagesController {
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   replaceSections(
-    @Param('slug') slug: string,
+    @Param('slug', ParseSlugPipe) slug: string,
     @Body() dto: UpsertPageDto,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<PageResponseDto> {
@@ -159,7 +161,7 @@ export class PagesController {
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   publish(
-    @Param('slug') slug: string,
+    @Param('slug', ParseSlugPipe) slug: string,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<PageResponseDto> {
     return this.pagesService.publish(slug, actor);
@@ -181,7 +183,7 @@ export class PagesController {
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   archive(
-    @Param('slug') slug: string,
+    @Param('slug', ParseSlugPipe) slug: string,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<PageResponseDto> {
     return this.pagesService.archive(slug, actor);

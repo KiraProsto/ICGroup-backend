@@ -1,4 +1,4 @@
-import { Editor, type AnyExtension, type JSONContent } from '@tiptap/core';
+import { generateText, type AnyExtension, type JSONContent } from '@tiptap/core';
 import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import Image from '@tiptap/extension-image';
@@ -7,6 +7,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { generateHTML } from '@tiptap/html/server';
 import StarterKit from '@tiptap/starter-kit';
+import sanitizeHtml from 'sanitize-html';
 
 const EMPTY_DOCUMENT: JSONContent = {
   type: 'doc',
@@ -30,6 +31,72 @@ export const TIPTAP_EXTENSIONS: readonly AnyExtension[] = Object.freeze([
   TableKit.configure({ table: { resizable: false } }),
 ]);
 
+/**
+ * Strict allowlist for HTML produced by Tiptap's generateHTML.
+ * Covers all elements the extension set above can emit.
+ * Blocks every attribute not in the list — including on*, srcdoc, data:.
+ */
+const TIPTAP_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: [
+    // StarterKit (Prose)
+    'p',
+    'br',
+    'hr',
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'ul',
+    'ol',
+    'li',
+    'blockquote',
+    'pre',
+    'code',
+    'strong',
+    'em',
+    's',
+    'a',
+    // TextStyle / Color / Highlight
+    'span',
+    'mark',
+    // Image
+    'img',
+    // TableKit
+    'table',
+    'colgroup',
+    'col',
+    'thead',
+    'tbody',
+    'tfoot',
+    'tr',
+    'th',
+    'td',
+  ],
+  allowedAttributes: {
+    '*': ['class', 'style'],
+    a: ['href', 'title', 'target', 'rel'],
+    img: ['src', 'alt', 'title', 'width', 'height'],
+    col: ['span'],
+    th: ['colspan', 'rowspan', 'scope'],
+    td: ['colspan', 'rowspan'],
+  },
+  allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+  allowedSchemesByTag: { img: ['http', 'https'] },
+  allowedStyles: {
+    '*': {
+      // Allow inline color / background-color (Color + Highlight extensions)
+      color: [/.*/],
+      'background-color': [/.*/],
+      'text-align': [/^(left|center|right|justify)$/],
+    },
+  },
+  transformTags: {
+    a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer' }, true),
+  },
+};
+
 export interface PlainTextExtractionOptions {
   blockSeparator?: string;
 }
@@ -51,32 +118,18 @@ function normalizeDocument(content: JSONContent | null | undefined): JSONContent
   return content;
 }
 
-function withEditor<T>(content: JSONContent | null | undefined, reader: (editor: Editor) => T): T {
-  const editor = new Editor({
-    element: null,
-    editable: false,
-    extensions: [...TIPTAP_EXTENSIONS],
-    content: normalizeDocument(content),
-  });
-
-  try {
-    return reader(editor);
-  } finally {
-    editor.destroy();
-  }
-}
-
 export function renderToHtml(content: JSONContent | null | undefined): string {
-  return generateHTML(normalizeDocument(content), [...TIPTAP_EXTENSIONS]);
+  const raw = generateHTML(normalizeDocument(content), [...TIPTAP_EXTENSIONS]);
+  return sanitizeHtml(raw, TIPTAP_SANITIZE_OPTIONS);
 }
 
 export function extractPlainText(
   content: JSONContent | null | undefined,
   options: PlainTextExtractionOptions = {},
 ): string {
-  return withEditor(content, (editor) =>
-    editor.getText({ blockSeparator: options.blockSeparator ?? '\n\n' }).trim(),
-  );
+  return generateText(normalizeDocument(content), [...TIPTAP_EXTENSIONS], {
+    blockSeparator: options.blockSeparator ?? '\n\n',
+  }).trim();
 }
 
 export function buildPublishedRichTextProjection(

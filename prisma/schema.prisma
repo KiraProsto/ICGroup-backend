@@ -59,6 +59,14 @@ enum ArticleType {
   ANNOUNCEMENT
 }
 
+enum ArticleCardType {
+  TEXT // Rich-text block (Tiptap ProseMirror JSON)
+  QUOTE // Pull-quote / blockquote
+  PUBLICATION // Embedded reference to another NewsArticle
+  IMAGE // Single image with optional caption
+  VIDEO // Video embed (URL + optional caption)
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -175,8 +183,8 @@ model NewsArticle {
   excerptTitle     String?                  @map("excerpt_title")
   excerpt          String? // plain text body of the anons block
   excerptImage     String?                  @map("excerpt_image")
-  // Rich-text body — Source of truth (ProseMirror/Tiptap JSON)
-  body             Json
+  // Rich-text body — compiled Tiptap/ProseMirror JSON document (cards stored separately in article_cards)
+  body             Json?
   // Pre-rendered HTML (generated on publish via generateHTML())
   bodyHtml         String?                  @map("body_html")
   // Plain text extraction (generated on publish, powers FTS)
@@ -207,8 +215,9 @@ model NewsArticle {
   updatedAt        DateTime                 @updatedAt @map("updated_at")
   deletedAt        DateTime?                @map("deleted_at")
 
-  author User    @relation(fields: [authorId], references: [id])
-  rubric Rubric? @relation(fields: [rubricId], references: [id], onDelete: SetNull)
+  author User          @relation(fields: [authorId], references: [id])
+  rubric Rubric?       @relation(fields: [rubricId], references: [id], onDelete: SetNull)
+  cards  ArticleCard[]
 
   @@index([status, publishedAt])
   @@index([authorId])
@@ -216,6 +225,36 @@ model NewsArticle {
   @@index([status, articleType, publicationIndex])
   @@index([status, rubricId, publicationIndex])
   @@map("news_articles")
+}
+
+// ─────────────────────────────────────────────
+//  CONTENT — ARTICLE CARDS
+// ─────────────────────────────────────────────
+
+/**
+ * Article content is built from ordered cards. Each card has a type and a
+ * JSONB data payload validated by Zod in the application layer.
+ * Card.data shapes (per ArticleCardType):
+ * TEXT        → { body: JSONContent }            — Tiptap ProseMirror document
+ * QUOTE       → { text: string }                 — plain blockquote text
+ * PUBLICATION → { articleId: string }            — id of the referenced NewsArticle
+ * IMAGE       → { url: string; caption?: string }— http/https URL only
+ * VIDEO       → { url: string; caption?: string }— http/https URL only
+ */
+model ArticleCard {
+  id        String          @id @default(uuid())
+  articleId String          @map("article_id")
+  type      ArticleCardType
+  order     Int
+  data      Json
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  // Keeps card positions unique per article and covers ordered card fetches.
+  @@unique([articleId, order])
+  @@map("article_cards")
 }
 
 // Full-text search column (applied via raw SQL — see 20260309000002_add_news_fts):
