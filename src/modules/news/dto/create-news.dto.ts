@@ -189,9 +189,11 @@ export class CreateNewsDto {
   // ─── Advertisement ────────────────────────────────────────────────────────────
 
   @ApiPropertyOptional({
-    example: '<script>/* ad tag */</script>',
+    example: '<!-- Ad tag placeholder -->',
     description:
-      'Raw ad-tag banner code. MUST be rendered inside a sandboxed iframe — never injected directly into the DOM.',
+      'Raw ad-tag banner code (e.g. a script snippet supplied by an ad network). ' +
+      'MUST be rendered inside a sandboxed iframe — never injected directly into the DOM. ' +
+      'Retrieve via GET /:id/ad-banner-code (requires update permission).',
   })
   @IsString()
   @MaxLength(20_000)

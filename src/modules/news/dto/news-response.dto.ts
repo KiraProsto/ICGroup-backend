@@ -104,10 +104,16 @@ export class NewsResponseDto extends NewsSummaryResponseDto {
   rssDefault!: boolean;
 
   @ApiPropertyOptional({ nullable: true })
-  adBannerCode!: string | null;
-
-  @ApiPropertyOptional({ nullable: true })
   adBannerImage!: string | null;
+
+  /**
+   * Whether an ad banner code snippet has been configured for this article.
+   * The raw code is intentionally NOT returned here to limit its exposure
+   * (it may contain ad-network script tags). Use GET /:id/ad-banner-code
+   * (requires 'update NewsArticle' permission) to retrieve the actual snippet.
+   */
+  @ApiProperty({ description: 'True when an ad banner code snippet is stored for this article.' })
+  hasAdBannerCode!: boolean;
 
   @ApiProperty({ type: [CardResponseDto] })
   cards!: CardResponseDto[];
@@ -121,4 +127,18 @@ export class NewsPreviewResponseDto extends NewsResponseDto {
     description: 'Pre-rendered HTML of all cards (generated on-the-fly for preview)',
   })
   bodyHtml!: string | null;
+}
+
+// ─── Ad-banner code response (restricted endpoint) ───────────────────────────
+
+export class AdBannerCodeResponseDto {
+  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
+  id!: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Raw ad-tag snippet. MUST be rendered inside a sandboxed iframe — never injected directly into the DOM.',
+  })
+  adBannerCode!: string | null;
 }

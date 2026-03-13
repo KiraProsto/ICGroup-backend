@@ -24,6 +24,7 @@ export type AppSubjects =
   | 'Company'
   | 'Purchase'
   | 'AuditLog'
+  | 'MediaAsset'
   | 'all';
 
 /** Application-wide CASL ability type. */
@@ -151,6 +152,8 @@ export class CaslAbilityFactory {
         can('manage', 'Page');
         can('manage', 'PageSection');
         can('manage', 'Rubric');
+        // Media uploads for content.
+        can('create', 'MediaAsset');
         // Read-only access to supporting resources.
         can('read', 'User');
         can('read', 'Company');

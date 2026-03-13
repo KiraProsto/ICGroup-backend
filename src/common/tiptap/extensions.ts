@@ -86,9 +86,15 @@ const TIPTAP_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   allowedSchemesByTag: { img: ['http', 'https'] },
   allowedStyles: {
     '*': {
-      // Allow inline color / background-color (Color + Highlight extensions)
-      color: [/.*/],
-      'background-color': [/.*/],
+      // Allow inline color / background-color (Color + Highlight extensions).
+      // Restricted to hex, numeric rgb/rgba/hsl/hsla, and named colors only.
+      // [^)]* is intentionally avoided to prevent CSS expression/variable injection.
+      color: [
+        /^(?:#[0-9a-fA-F]{3,8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*[0-9.]+)?\s*\)|hsla?\(\s*\d{1,3}\s*,\s*\d{1,3}%\s*,\s*\d{1,3}%(?:\s*,\s*[0-9.]+)?\s*\)|[a-zA-Z]+)$/,
+      ],
+      'background-color': [
+        /^(?:#[0-9a-fA-F]{3,8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*[0-9.]+)?\s*\)|hsla?\(\s*\d{1,3}\s*,\s*\d{1,3}%\s*,\s*\d{1,3}%(?:\s*,\s*[0-9.]+)?\s*\)|[a-zA-Z]+)$/,
+      ],
       'text-align': [/^(left|center|right|justify)$/],
     },
   },

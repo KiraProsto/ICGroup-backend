@@ -42,6 +42,7 @@ import { CreateCardDto } from './dto/create-card.dto.js';
 import { UpdateCardDto } from './dto/update-card.dto.js';
 import { ReorderCardsDto } from './dto/reorder-cards.dto.js';
 import {
+  AdBannerCodeResponseDto,
   CardResponseDto,
   NewsPreviewResponseDto,
   NewsResponseDto,
@@ -231,6 +232,26 @@ export class NewsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<NewsPreviewResponseDto> {
     return this.newsService.getPreview(id);
+  }
+
+  // ─── Ad-banner code (restricted read) ────────────────────────────────────
+
+  @Get(':id/ad-banner-code')
+  @CheckPolicies((ability) => ability.can('update', 'NewsArticle'))
+  @ApiOperation({
+    summary:
+      'Retrieve the raw ad-banner code snippet for an article. ' +
+      'Restricted to CONTENT_MANAGER and SUPER_ADMIN — raw ad-tag HTML is never returned by the standard GET endpoint.',
+  })
+  @ApiParam({ name: 'id', description: 'Article UUID' })
+  @ApiOkResponse({ type: ApiResponseDto(AdBannerCodeResponseDto) })
+  @ApiNotFoundResponse({ type: ApiErrorResponseDto })
+  @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ type: ApiErrorResponseDto })
+  getAdBannerCode(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdBannerCodeResponseDto> {
+    return this.newsService.getAdBannerCode(id);
   }
 
   // ─── Cards: list ─────────────────────────────────────────────────────────
