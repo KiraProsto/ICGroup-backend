@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -34,6 +35,7 @@ import { CreatePageDto } from './dto/create-page.dto.js';
 import { UpsertPageDto } from './dto/upsert-page.dto.js';
 import { ListPagesQueryDto } from './dto/list-pages-query.dto.js';
 import { PageResponseDto, PageSummaryResponseDto } from './dto/page-response.dto.js';
+import { UpdatePageDto } from './dto/update-page.dto.js';
 
 /**
  * Manages dynamic pages created through the admin panel.
@@ -96,6 +98,25 @@ export class PagesController {
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   findOne(@Param('slug') slug: string): Promise<PageResponseDto> {
     return this.pagesService.findOne(slug);
+  }
+
+  // ─── PATCH /admin/content/pages/:slug ────────────────────────────────────
+
+  @Patch(':slug')
+  @CheckPolicies((ability) => ability.can('update', 'Page'))
+  @ApiOperation({ summary: 'Rename a page (update its human-readable title).' })
+  @ApiParam({ name: 'slug', type: String, description: 'URL-safe page slug' })
+  @ApiOkResponse({ type: ApiResponseDto(PageSummaryResponseDto) })
+  @ApiBadRequestResponse({ type: ApiErrorResponseDto, description: 'Validation failed' })
+  @ApiNotFoundResponse({ type: ApiErrorResponseDto, description: 'Page not found' })
+  @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ type: ApiErrorResponseDto })
+  updateName(
+    @Param('slug') slug: string,
+    @Body() dto: UpdatePageDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ): Promise<PageSummaryResponseDto> {
+    return this.pagesService.updateName(slug, dto, actor);
   }
 
   // ─── PUT /admin/content/pages/:slug ──────────────────────────────────────

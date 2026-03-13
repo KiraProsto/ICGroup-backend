@@ -22,6 +22,9 @@ COPY . .
 # Generate Prisma client
 RUN npx prisma generate
 
+# Create dist dir and ensure node user owns the entire app directory
+RUN mkdir -p /app/dist && chown -R node:node /app
+
 # Run as non-root — mirrors production security posture
 USER node
 

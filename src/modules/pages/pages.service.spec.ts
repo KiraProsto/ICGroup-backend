@@ -372,7 +372,7 @@ describe('PagesService', () => {
       await expect(service.replaceSections('about', { sections: [] }, adminActor)).rejects.toThrow(
         'serialization failure',
       );
-      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(3);
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(5);
     });
   });
 
