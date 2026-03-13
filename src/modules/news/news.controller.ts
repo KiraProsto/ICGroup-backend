@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Put,
@@ -26,6 +27,7 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
+  ApiArrayResponseDto,
   ApiErrorResponseDto,
   ApiPaginatedResponseDto,
   ApiResponseDto,
@@ -114,7 +116,7 @@ export class NewsController {
   @ApiNotFoundResponse({ type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
-  findOne(@Param('id') id: string): Promise<NewsResponseDto> {
+  findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string): Promise<NewsResponseDto> {
     return this.newsService.findOne(id);
   }
 
@@ -131,7 +133,7 @@ export class NewsController {
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   update(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateNewsDto,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<NewsSummaryResponseDto> {
@@ -149,7 +151,10 @@ export class NewsController {
   @ApiNotFoundResponse({ type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
-  softDelete(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser): Promise<void> {
+  softDelete(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CurrentUser() actor: AuthenticatedUser,
+  ): Promise<void> {
     return this.newsService.softDelete(id, actor);
   }
 
@@ -168,7 +173,7 @@ export class NewsController {
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   publish(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<NewsResponseDto> {
     return this.newsService.publish(id, actor);
@@ -186,7 +191,7 @@ export class NewsController {
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   revertToDraft(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<NewsResponseDto> {
     return this.newsService.revertToDraft(id, actor);
@@ -204,7 +209,7 @@ export class NewsController {
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   archive(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<NewsResponseDto> {
     return this.newsService.archive(id, actor);
@@ -222,7 +227,9 @@ export class NewsController {
   @ApiNotFoundResponse({ type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
-  preview(@Param('id') id: string): Promise<NewsPreviewResponseDto> {
+  preview(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<NewsPreviewResponseDto> {
     return this.newsService.getPreview(id);
   }
 
@@ -232,11 +239,13 @@ export class NewsController {
   @CheckPolicies((ability) => ability.can('read', 'NewsArticle'))
   @ApiOperation({ summary: 'List all cards of an article ordered by position.' })
   @ApiParam({ name: 'articleId', description: 'Article UUID' })
-  @ApiOkResponse({ type: CardResponseDto, isArray: true })
+  @ApiOkResponse({ type: ApiArrayResponseDto(CardResponseDto) })
   @ApiNotFoundResponse({ type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
-  findCards(@Param('articleId') articleId: string): Promise<CardResponseDto[]> {
+  findCards(
+    @Param('articleId', new ParseUUIDPipe({ version: '4' })) articleId: string,
+  ): Promise<CardResponseDto[]> {
     return this.newsService.findCards(articleId);
   }
 
@@ -252,7 +261,7 @@ export class NewsController {
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   createCard(
-    @Param('articleId') articleId: string,
+    @Param('articleId', new ParseUUIDPipe({ version: '4' })) articleId: string,
     @Body() dto: CreateCardDto,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<CardResponseDto> {
@@ -272,8 +281,8 @@ export class NewsController {
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   updateCard(
-    @Param('articleId') articleId: string,
-    @Param('cardId') cardId: string,
+    @Param('articleId', new ParseUUIDPipe({ version: '4' })) articleId: string,
+    @Param('cardId', new ParseUUIDPipe({ version: '4' })) cardId: string,
     @Body() dto: UpdateCardDto,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<CardResponseDto> {
@@ -293,8 +302,8 @@ export class NewsController {
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   deleteCard(
-    @Param('articleId') articleId: string,
-    @Param('cardId') cardId: string,
+    @Param('articleId', new ParseUUIDPipe({ version: '4' })) articleId: string,
+    @Param('cardId', new ParseUUIDPipe({ version: '4' })) cardId: string,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<void> {
     return this.newsService.deleteCard(articleId, cardId, actor);
@@ -308,13 +317,13 @@ export class NewsController {
     summary: 'Reorder all cards of an article. Provide the complete ordered list of card UUIDs.',
   })
   @ApiParam({ name: 'articleId', description: 'Article UUID' })
-  @ApiOkResponse({ type: CardResponseDto, isArray: true })
+  @ApiOkResponse({ type: ApiArrayResponseDto(CardResponseDto) })
   @ApiBadRequestResponse({ type: ApiErrorResponseDto, description: 'Missing or foreign card IDs' })
   @ApiNotFoundResponse({ type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
   reorderCards(
-    @Param('articleId') articleId: string,
+    @Param('articleId', new ParseUUIDPipe({ version: '4' })) articleId: string,
     @Body() dto: ReorderCardsDto,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<CardResponseDto[]> {

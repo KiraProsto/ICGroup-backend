@@ -125,6 +125,7 @@ describe('NewsService', () => {
             },
             $transaction: jest.fn(),
             $queryRaw: jest.fn(),
+            $executeRaw: jest.fn().mockResolvedValue(undefined),
           },
         },
         {
@@ -503,7 +504,7 @@ describe('NewsService', () => {
         actor,
       );
 
-      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
       expect(result).toHaveLength(3);
     });
 

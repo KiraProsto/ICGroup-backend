@@ -183,7 +183,7 @@ model NewsArticle {
   excerptTitle     String?                  @map("excerpt_title")
   excerpt          String? // plain text body of the anons block
   excerptImage     String?                  @map("excerpt_image")
-  // Rich-text body — compiled from cards on publish (ProseMirror/Tiptap JSON + cards array)
+  // Rich-text body — compiled Tiptap/ProseMirror JSON document (cards stored separately in article_cards)
   body             Json?
   // Pre-rendered HTML (generated on publish via generateHTML())
   bodyHtml         String?                  @map("body_html")

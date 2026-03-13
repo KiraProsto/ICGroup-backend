@@ -594,9 +594,9 @@ export class NewsService {
       })
       .catch(async (e: unknown) => {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-          const current = await this.prisma.newsArticle.findUnique({
-            where: { id },
-            select: { status: true },
+          const current = await this.prisma.newsArticle.findFirst({
+            where: { id, deletedAt: null },
+            select: { id: true },
           });
           if (!current) throw new NotFoundException(`News article "${id}" not found`);
           throw new ConflictException(`News article "${id}" is already published`);
@@ -1032,20 +1032,18 @@ export class NewsService {
   private async persistCardOrder(orderedCardIds: string[]): Promise<void> {
     if (orderedCardIds.length === 0) return;
 
-    await this.prisma.$transaction([
-      ...orderedCardIds.map((cardId, index) =>
-        this.prisma.articleCard.update({
-          where: { id: cardId },
-          data: { order: CARD_ORDER_TEMP_OFFSET + index },
-        }),
-      ),
-      ...orderedCardIds.map((cardId, index) =>
-        this.prisma.articleCard.update({
-          where: { id: cardId },
-          data: { order: index },
-        }),
-      ),
-    ]);
+    const cases = orderedCardIds.map(
+      (cardId, index) => Prisma.sql`WHEN ${cardId}::uuid THEN ${index}`,
+    );
+    const idList = Prisma.join(orderedCardIds.map((id) => Prisma.sql`${id}::uuid`));
+
+    await this.prisma.$executeRaw(Prisma.sql`
+      UPDATE "article_cards"
+      SET "order" = CASE "id"
+        ${Prisma.join(cases, ' ')}
+      END
+      WHERE "id" IN (${idList})
+    `);
   }
 
   private async findAllByFullTextSearch({

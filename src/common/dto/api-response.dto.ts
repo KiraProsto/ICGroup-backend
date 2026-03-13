@@ -89,6 +89,32 @@ export function ApiResponseDto<T extends object>(DataClass: new (...args: unknow
 }
 
 /**
+ * Returns a Swagger-annotated class that describes a non-paginated list response:
+ *   { success: true, data: <DataClass>[], meta: { timestamp, path } }
+ *
+ * @example
+ *   @ApiOkResponse({ type: ApiArrayResponseDto(CardDto) })
+ */
+export function ApiArrayResponseDto<T extends object>(DataClass: new (...args: unknown[]) => T) {
+  class ArrayWrapper {
+    @ApiProperty({ example: true })
+    success!: boolean;
+
+    @ApiProperty({ type: DataClass, isArray: true })
+    data!: T[];
+
+    @ApiProperty({ type: ApiMetaDto })
+    meta!: ApiMetaDto;
+  }
+
+  Object.defineProperty(ArrayWrapper, 'name', {
+    value: `ApiArrayResponseDto_${DataClass.name}`,
+  });
+
+  return ArrayWrapper;
+}
+
+/**
  * Returns a Swagger-annotated class that describes a paginated list response:
  *   { success: true, data: <DataClass>[], meta: { timestamp, path, total, page, perPage, totalPages } }
  *

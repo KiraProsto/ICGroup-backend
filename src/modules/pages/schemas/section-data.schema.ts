@@ -106,6 +106,20 @@ const ALLOWED_HTML_OPTIONS: sanitizeHtml.IOptions = {
     td: ['colspan', 'rowspan'],
     '*': ['class', 'style'],
   },
+  // Restrict inline styles to a small, explicit allowlist of safe properties.
+  // This prevents arbitrary CSS from being injected while still allowing
+  // basic text formatting coming from the editor.
+  allowedStyles: {
+    '*': {
+      'text-align': [/^(?:left|right|center|justify)$/],
+      'font-weight': [/^(?:normal|bold|bolder|lighter|[1-9]00)$/],
+      'font-style': [/^(?:normal|italic)$/],
+      'text-decoration': [/^(?:none|underline|line-through|overline)$/],
+      // Basic color formats: hex, rgb[a], hsl[a], or named colors.
+      color: [/^(?:#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\)|[a-zA-Z]+)$/],
+      'background-color': [/^(?:#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\)|[a-zA-Z]+)$/],
+    },
+  },
   allowedSchemes: ['http', 'https', 'mailto', 'tel'],
   allowedSchemesByTag: {
     img: ['http', 'https'],
