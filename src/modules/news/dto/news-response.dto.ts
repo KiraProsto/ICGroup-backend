@@ -135,7 +135,7 @@ export class NewsSearchResultDto extends NewsSummaryResponseDto {
   @ApiProperty({
     example: 0.0759,
     description:
-      'PostgreSQL ts_rank score computed over body_tsv (tsvector). Higher = more relevant.',
+      'PostgreSQL ts_rank_cd score computed over body_tsv (tsvector). Higher = more relevant.',
   })
   rank!: number;
 }

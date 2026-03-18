@@ -117,13 +117,13 @@ export class NewsController {
   // from treating the literal 'search' as a UUID path parameter.
 
   @Get('search')
-  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @Throttle({ global: { ttl: 60_000, limit: 30 } })
   @CheckPolicies((ability) => ability.can('read', 'NewsArticle'))
   @ApiOperation({
-    summary: 'Full-text search over PUBLISHED news articles (tsvector + ts_rank).',
+    summary: 'Full-text search over PUBLISHED news articles (tsvector + ts_rank_cd).',
     description:
       'Searches `title` and `body_text` using PostgreSQL Russian FTS. ' +
-      'Results are ranked by `ts_rank` (term frequency) descending, then `published_at` descending. ' +
+      'Results are ranked by `ts_rank_cd` (coverage density) descending, then `publication_index` ascending, then `created_at` descending. ' +
       'Only PUBLISHED, non-deleted articles are returned. ' +
       'Supports websearch operators: "exact phrase", -exclude, OR.',
   })
