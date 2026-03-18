@@ -38,11 +38,13 @@ import type { ListNewsQueryDto } from './dto/list-news-query.dto.js';
 import type { CreateCardDto } from './dto/create-card.dto.js';
 import type { UpdateCardDto } from './dto/update-card.dto.js';
 import type { ReorderCardsDto } from './dto/reorder-cards.dto.js';
+import type { SearchNewsQueryDto } from './dto/search-news-query.dto.js';
 import type {
   AdBannerCodeResponseDto,
   CardResponseDto,
   NewsPreviewResponseDto,
   NewsResponseDto,
+  NewsSearchResultDto,
   NewsSummaryResponseDto,
 } from './dto/news-response.dto.js';
 
@@ -1170,6 +1172,110 @@ export class NewsService {
     } else {
       await this.prisma.$executeRaw(sql);
     }
+  }
+
+  // ─── search ────────────────────────────────────────────────────────────
+
+  /**
+   * Dedicated full-text search over PUBLISHED news articles.
+   *
+   * Uses `ts_rank_cd` (Coverage Density rank) over the `body_tsv` generated column,
+   * which covers `title` || `body_text` via `to_tsvector('russian', ...)`.
+   * `ts_rank_cd` accounts for document length, giving more meaningful scores across
+   * variable-length articles — consistent with `findAllByFullTextSearch`.
+   * The column is populated on publish, so only PUBLISHED articles are searched.
+   *
+   * `websearch_to_tsquery` is used so untrusted input is never concatenated:
+   * it supports web-search operators (+, -, "phrase") and silently drops
+   * unsupported tokens — no syntax errors, no injection surface.
+   * All values are passed as parameterized `$N` bindings via Prisma.sql.
+   */
+  async search(query: SearchNewsQueryDto): Promise<PaginatedResult<NewsSearchResultDto>> {
+    const q = query.q; // already trimmed by @Transform in the DTO
+    const page = query.page ?? 1;
+    const perPage = query.perPage ?? 20;
+    const offset = (page - 1) * perPage;
+
+    type SearchRow = {
+      id: string;
+      slug: string;
+      title: string;
+      articleType: string;
+      rubricId: string | null;
+      status: string;
+      publishedAt: Date | null;
+      coverImage: string | null;
+      excerptTitle: string | null;
+      publicationIndex: number;
+      authorId: string;
+      createdAt: Date;
+      updatedAt: Date;
+      rank: number;
+    };
+
+    const [rows, countRows] = await Promise.all([
+      this.prisma.$queryRaw<SearchRow[]>(Prisma.sql`
+        WITH tsq AS (SELECT websearch_to_tsquery('russian', ${q}) AS q)
+        SELECT
+          id,
+          slug,
+          title,
+          article_type        AS "articleType",
+          rubric_id           AS "rubricId",
+          status::text        AS status,
+          published_at        AS "publishedAt",
+          cover_image         AS "coverImage",
+          excerpt_title       AS "excerptTitle",
+          publication_index   AS "publicationIndex",
+          author_id           AS "authorId",
+          created_at          AS "createdAt",
+          updated_at          AS "updatedAt",
+          ts_rank_cd("body_tsv", tsq.q)::float8 AS rank
+        FROM "news_articles"
+        CROSS JOIN tsq
+        WHERE
+          "deleted_at" IS NULL
+          AND "status" = 'PUBLISHED'
+          AND "body_tsv" @@ tsq.q
+        ORDER BY rank DESC, "publication_index" ASC, "created_at" DESC
+        LIMIT ${perPage} OFFSET ${offset}
+      `),
+      this.prisma.$queryRaw<[{ count: bigint }]>(Prisma.sql`
+        WITH tsq AS (SELECT websearch_to_tsquery('russian', ${q}) AS q)
+        SELECT COUNT(*)::bigint AS count
+        FROM "news_articles"
+        CROSS JOIN tsq
+        WHERE
+          "deleted_at" IS NULL
+          AND "status" = 'PUBLISHED'
+          AND "body_tsv" @@ tsq.q
+      `),
+    ]);
+
+    const total = Number(countRows[0]?.count ?? 0);
+    const results: NewsSearchResultDto[] = rows.map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      title: row.title,
+      articleType: row.articleType as ArticleType,
+      rubricId: row.rubricId,
+      status: row.status as ContentStatus,
+      publishedAt: row.publishedAt?.toISOString() ?? null,
+      coverImage: row.coverImage,
+      excerptTitle: row.excerptTitle,
+      publicationIndex: row.publicationIndex,
+      authorId: row.authorId,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      rank: row.rank,
+    }));
+
+    return paginatedResult(results, {
+      total,
+      page,
+      perPage,
+      totalPages: Math.ceil(total / perPage),
+    });
   }
 
   private async findAllByFullTextSearch({

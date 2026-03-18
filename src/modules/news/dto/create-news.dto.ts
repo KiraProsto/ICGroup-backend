@@ -5,7 +5,6 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
-  IsObject,
   IsOptional,
   IsString,
   IsUrl,

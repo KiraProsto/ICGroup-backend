@@ -561,4 +561,88 @@ describe('NewsService', () => {
       ).rejects.toThrow(BadRequestException);
     });
   });
+
+  // ─── search ──────────────────────────────────────────────────────────────
+
+  describe('search', () => {
+    const searchRow = {
+      id: 'article-uuid-1',
+      slug: 'test-article',
+      title: 'Test Article',
+      articleType: ArticleType.NEWS,
+      rubricId: null,
+      status: 'PUBLISHED',
+      publishedAt: now,
+      coverImage: null,
+      excerptTitle: null,
+      publicationIndex: 500,
+      authorId: 'user-uuid-1',
+      createdAt: now,
+      updatedAt: now,
+      rank: 0.0759,
+    };
+
+    it('returns ranked paginated results for a valid query', async () => {
+      (prisma.$queryRaw as jest.Mock)
+        .mockResolvedValueOnce([searchRow]) // rows
+        .mockResolvedValueOnce([{ count: BigInt(1) }]); // countRows
+
+      const result = await service.search({ q: 'финансы', page: 1, perPage: 20 });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]).toMatchObject({
+        id: 'article-uuid-1',
+        rank: 0.0759,
+        status: ContentStatus.PUBLISHED,
+        publishedAt: now.toISOString(),
+      });
+      expect(result.meta.total).toBe(1);
+      expect(result.meta.page).toBe(1);
+      expect(result.meta.perPage).toBe(20);
+      expect(result.meta.totalPages).toBe(1);
+    });
+
+    it('returns empty paginated result when no articles match', async () => {
+      (prisma.$queryRaw as jest.Mock)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ count: BigInt(0) }]);
+
+      const result = await service.search({ q: 'несуществующийтерм', page: 1, perPage: 20 });
+
+      expect(result.data).toHaveLength(0);
+      expect(result.meta.total).toBe(0);
+      expect(result.meta.totalPages).toBe(0);
+    });
+
+    it('respects pagination parameters (page/perPage)', async () => {
+      (prisma.$queryRaw as jest.Mock)
+        .mockResolvedValueOnce([searchRow])
+        .mockResolvedValueOnce([{ count: BigInt(25) }]);
+
+      const result = await service.search({ q: 'финансы', page: 2, perPage: 10 });
+
+      expect(result.meta.page).toBe(2);
+      expect(result.meta.perPage).toBe(10);
+      expect(result.meta.totalPages).toBe(3);
+    });
+
+    it('handles missing countRows gracefully (defaults total to 0)', async () => {
+      (prisma.$queryRaw as jest.Mock).mockResolvedValueOnce([]).mockResolvedValueOnce([]); // empty count result
+
+      const result = await service.search({ q: 'тест', page: 1, perPage: 20 });
+
+      expect(result.meta.total).toBe(0);
+    });
+
+    it('maps null publishedAt to null in the response', async () => {
+      const rowWithNullPublished = { ...searchRow, publishedAt: null };
+      (prisma.$queryRaw as jest.Mock)
+        .mockResolvedValueOnce([rowWithNullPublished])
+        .mockResolvedValueOnce([{ count: BigInt(1) }]);
+
+      const result = await service.search({ q: 'финансы', page: 1, perPage: 20 });
+
+      expect(result.data[0].publishedAt).toBeNull();
+    });
+  });
 });
