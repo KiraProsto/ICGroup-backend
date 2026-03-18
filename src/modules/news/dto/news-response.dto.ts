@@ -129,6 +129,17 @@ export class NewsPreviewResponseDto extends NewsResponseDto {
   bodyHtml!: string | null;
 }
 
+// ─── Search result (includes ts_rank score) ──────────────────────────────────
+
+export class NewsSearchResultDto extends NewsSummaryResponseDto {
+  @ApiProperty({
+    example: 0.0759,
+    description:
+      'PostgreSQL ts_rank score computed over body_tsv (tsvector). Higher = more relevant.',
+  })
+  rank!: number;
+}
+
 // ─── Ad-banner code response (restricted endpoint) ───────────────────────────
 
 export class AdBannerCodeResponseDto {

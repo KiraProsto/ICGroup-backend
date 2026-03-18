@@ -41,11 +41,13 @@ import { ListNewsQueryDto } from './dto/list-news-query.dto.js';
 import { CreateCardDto } from './dto/create-card.dto.js';
 import { UpdateCardDto } from './dto/update-card.dto.js';
 import { ReorderCardsDto } from './dto/reorder-cards.dto.js';
+import { SearchNewsQueryDto } from './dto/search-news-query.dto.js';
 import {
   AdBannerCodeResponseDto,
   CardResponseDto,
   NewsPreviewResponseDto,
   NewsResponseDto,
+  NewsSearchResultDto,
   NewsSummaryResponseDto,
 } from './dto/news-response.dto.js';
 
@@ -55,6 +57,7 @@ import {
  * CASL policy matrix:
  *   GET         /                            → read  NewsArticle  (CM, SM, SA)
  *   POST        /                            → create NewsArticle (CM, SA)
+ *   GET         /search                      → read  NewsArticle  (CM, SM, SA) [FTS]
  *   GET         /:id                         → read  NewsArticle  (CM, SM, SA)
  *   PATCH       /:id                         → update NewsArticle (CM, SA)
  *   DELETE      /:id                         → delete NewsArticle (CM, SA)
@@ -105,6 +108,27 @@ export class NewsController {
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<NewsSummaryResponseDto> {
     return this.newsService.create(dto, actor);
+  }
+
+  // ─── FTS search ───────────────────────────────────────────────────────────
+  // NOTE: '/search' MUST be declared before '/:id' to prevent NestJS routing
+  // from treating the literal 'search' as a UUID path parameter.
+
+  @Get('search')
+  @CheckPolicies((ability) => ability.can('read', 'NewsArticle'))
+  @ApiOperation({
+    summary: 'Full-text search over PUBLISHED news articles (tsvector + ts_rank).',
+    description:
+      'Searches `title` and `body_text` using PostgreSQL Russian FTS. ' +
+      'Results are ranked by `ts_rank` (term frequency) descending, then `published_at` descending. ' +
+      'Only PUBLISHED, non-deleted articles are returned. ' +
+      'Supports websearch operators: "exact phrase", -exclude, OR.',
+  })
+  @ApiOkResponse({ type: ApiPaginatedResponseDto(NewsSearchResultDto) })
+  @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ type: ApiErrorResponseDto })
+  search(@Query() query: SearchNewsQueryDto) {
+    return this.newsService.search(query);
   }
 
   // ─── Find one ─────────────────────────────────────────────────────────────

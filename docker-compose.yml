@@ -1,5 +1,31 @@
 services:
   # ─────────────────────────────────────────────
+  #  nm-init — ensures /app/node_modules is
+  #  writable by the node user (uid=1000) before
+  #  the app starts. Runs once as root, exits.
+  # ─────────────────────────────────────────────
+  nm-init:
+    image: node:24-alpine
+    user: "0:0"
+    volumes:
+      - nm-data:/data
+    command: ["sh", "-c", "mkdir -p /data && chown -R 1000:1000 /data"]
+    restart: "no"
+
+  # ─────────────────────────────────────────────
+  #  dist-init — ensures /app/dist is writable
+  #  by the node user (uid=1000) before the app
+  #  starts. Runs once as root, then exits.
+  # ─────────────────────────────────────────────
+  dist-init:
+    image: node:24-alpine
+    user: "0:0"
+    volumes:
+      - dist-data:/data
+    command: ["sh", "-c", "mkdir -p /data && chown -R 1000:1000 /data"]
+    restart: "no"
+
+  # ─────────────────────────────────────────────
   #  Application (dev with hot reload)
   # ─────────────────────────────────────────────
   app:
@@ -29,9 +55,13 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
     volumes:
       - .:/app
-      - /app/node_modules
-      - /app/dist
+      - nm-data:/app/node_modules
+      - dist-data:/app/dist
     depends_on:
+      nm-init:
+        condition: service_completed_successfully
+      dist-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -124,6 +154,10 @@ volumes:
   redisdata:
     driver: local
   miniodata:
+    driver: local
+  dist-data:
+    driver: local
+  nm-data:
     driver: local
 
 networks:
