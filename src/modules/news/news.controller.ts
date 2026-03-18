@@ -12,6 +12,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -35,6 +36,7 @@ import {
 import { CheckPolicies } from '../casl/decorators/check-policies.decorator.js';
 import { CurrentUser, type AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
 import { NewsService } from './news.service.js';
+import type { PaginatedResult } from '../../common/interceptors/transform-response.interceptor.js';
 import { CreateNewsDto } from './dto/create-news.dto.js';
 import { UpdateNewsDto } from './dto/update-news.dto.js';
 import { ListNewsQueryDto } from './dto/list-news-query.dto.js';
@@ -115,6 +117,7 @@ export class NewsController {
   // from treating the literal 'search' as a UUID path parameter.
 
   @Get('search')
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @CheckPolicies((ability) => ability.can('read', 'NewsArticle'))
   @ApiOperation({
     summary: 'Full-text search over PUBLISHED news articles (tsvector + ts_rank).',
@@ -127,7 +130,7 @@ export class NewsController {
   @ApiOkResponse({ type: ApiPaginatedResponseDto(NewsSearchResultDto) })
   @ApiUnauthorizedResponse({ type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ type: ApiErrorResponseDto })
-  search(@Query() query: SearchNewsQueryDto) {
+  search(@Query() query: SearchNewsQueryDto): Promise<PaginatedResult<NewsSearchResultDto>> {
     return this.newsService.search(query);
   }
 

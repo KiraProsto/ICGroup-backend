@@ -1,6 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 /**
  * Query parameters for the dedicated FTS search endpoint.
@@ -15,8 +24,10 @@ export class SearchNewsQueryDto {
       '"exact phrase", -exclude, OR. Maximum 500 characters.',
     maxLength: 500,
   })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
+  @Matches(/\S/, { message: 'q must contain at least one non-whitespace character' })
   @MaxLength(500)
   q!: string;
 

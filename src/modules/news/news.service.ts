@@ -1179,8 +1179,10 @@ export class NewsService {
   /**
    * Dedicated full-text search over PUBLISHED news articles.
    *
-   * Uses `ts_rank` (term frequency rank) over the `body_tsv` generated column,
+   * Uses `ts_rank_cd` (Coverage Density rank) over the `body_tsv` generated column,
    * which covers `title` || `body_text` via `to_tsvector('russian', ...)`.
+   * `ts_rank_cd` accounts for document length, giving more meaningful scores across
+   * variable-length articles — consistent with `findAllByFullTextSearch`.
    * The column is populated on publish, so only PUBLISHED articles are searched.
    *
    * `websearch_to_tsquery` is used so untrusted input is never concatenated:
@@ -1189,7 +1191,7 @@ export class NewsService {
    * All values are passed as parameterized `$N` bindings via Prisma.sql.
    */
   async search(query: SearchNewsQueryDto): Promise<PaginatedResult<NewsSearchResultDto>> {
-    const q = query.q.trim();
+    const q = query.q; // already trimmed by @Transform in the DTO
     const page = query.page ?? 1;
     const perPage = query.perPage ?? 20;
     const offset = (page - 1) * perPage;
@@ -1213,6 +1215,7 @@ export class NewsService {
 
     const [rows, countRows] = await Promise.all([
       this.prisma.$queryRaw<SearchRow[]>(Prisma.sql`
+        WITH tsq AS (SELECT websearch_to_tsquery('russian', ${q}) AS q)
         SELECT
           id,
           slug,
@@ -1227,22 +1230,25 @@ export class NewsService {
           author_id           AS "authorId",
           created_at          AS "createdAt",
           updated_at          AS "updatedAt",
-          ts_rank("body_tsv", websearch_to_tsquery('russian', ${q}))::float8 AS rank
+          ts_rank_cd("body_tsv", tsq.q)::float8 AS rank
         FROM "news_articles"
+        CROSS JOIN tsq
         WHERE
           "deleted_at" IS NULL
           AND "status" = 'PUBLISHED'
-          AND "body_tsv" @@ websearch_to_tsquery('russian', ${q})
-        ORDER BY rank DESC, "publication_index" ASC, "published_at" DESC
+          AND "body_tsv" @@ tsq.q
+        ORDER BY rank DESC, "publication_index" ASC, "created_at" DESC
         LIMIT ${perPage} OFFSET ${offset}
       `),
       this.prisma.$queryRaw<[{ count: bigint }]>(Prisma.sql`
+        WITH tsq AS (SELECT websearch_to_tsquery('russian', ${q}) AS q)
         SELECT COUNT(*)::bigint AS count
         FROM "news_articles"
+        CROSS JOIN tsq
         WHERE
           "deleted_at" IS NULL
           AND "status" = 'PUBLISHED'
-          AND "body_tsv" @@ websearch_to_tsquery('russian', ${q})
+          AND "body_tsv" @@ tsq.q
       `),
     ]);
 

@@ -5,7 +5,7 @@ services:
   #  the app starts. Runs once as root, exits.
   # ─────────────────────────────────────────────
   nm-init:
-    image: node:24-alpine
+    image: alpine:3
     user: "0:0"
     volumes:
       - nm-data:/data
@@ -18,7 +18,7 @@ services:
   #  starts. Runs once as root, then exits.
   # ─────────────────────────────────────────────
   dist-init:
-    image: node:24-alpine
+    image: alpine:3
     user: "0:0"
     volumes:
       - dist-data:/data
