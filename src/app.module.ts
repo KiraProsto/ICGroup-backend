@@ -20,6 +20,7 @@ import { UsersModule } from './modules/users/users.module.js';
 import { PagesModule } from './modules/pages/pages.module.js';
 import { NewsModule } from './modules/news/news.module.js';
 import { MediaModule } from './modules/media/media.module.js';
+import { PublicModule } from './modules/public/public.module.js';
 import { RedisThrottlerStorage } from './common/throttler-storage.js';
 
 @Module({
@@ -131,9 +132,10 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
     NewsModule,
     MediaModule,
 
-    // Feature modules will be added here in subsequent tasks:
-    // AuthModule, UsersModule, ContentModule, SalesModule,
-    // AuditModule, PublicApiModule
+    // Public portal API (unauthenticated, PUBLISHED content only)
+    PublicModule,
+
+    // Additional feature modules will be added here in subsequent tasks:
   ],
   controllers: [AppController],
   providers: [

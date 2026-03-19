@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module.js';
+import { PublicModule } from '../public/public.module.js';
 import { NewsController } from './news.controller.js';
 import { NewsService } from './news.service.js';
 
@@ -12,7 +13,7 @@ import { NewsService } from './news.service.js';
  * Prisma: PrismaModule (global — no explicit import needed)
  */
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, PublicModule],
   controllers: [NewsController],
   providers: [NewsService],
 })

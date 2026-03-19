@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { PagesService } from './pages.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { PublicService } from '../public/public.service.js';
 import { ContentStatus, Role, SectionType } from '../../generated/prisma/enums.js';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
 
@@ -86,6 +87,12 @@ const mockAuditService = {
   logAsync: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockPublicService = {
+  invalidatePage: jest.fn().mockResolvedValue(undefined),
+  invalidateNewsArticle: jest.fn().mockResolvedValue(undefined),
+  invalidateAllNewsLists: jest.fn().mockResolvedValue(undefined),
+};
+
 // ─── Test suite ──────────────────────────────────────────────────────────────
 
 describe('PagesService', () => {
@@ -100,6 +107,7 @@ describe('PagesService', () => {
         PagesService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: PublicService, useValue: mockPublicService },
       ],
     }).compile();
 

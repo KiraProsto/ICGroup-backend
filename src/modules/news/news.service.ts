@@ -18,6 +18,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
+import { PublicService } from '../public/public.service.js';
 import {
   paginatedResult,
   type PaginatedResult,
@@ -377,6 +378,7 @@ export class NewsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly publicService: PublicService,
   ) {}
 
   // ─── Article CRUD ─────────────────────────────────────────────────────────
@@ -541,6 +543,13 @@ export class NewsService {
       afterSnapshot: toAuditSnapshot(updated),
     });
 
+    // Invalidate public cache for published articles — metadata/slug changes are immediately visible.
+    if (existing.status === ContentStatus.PUBLISHED) {
+      // Invalidate the old slug key first (covers slug renames).
+      await this.publicService.invalidateNewsArticle(existing.slug);
+      // If the slug changed, the new key is warmed on next request — no extra invalidation needed.
+    }
+
     return mapSummary(updated);
   }
 
@@ -564,6 +573,11 @@ export class NewsService {
       beforeSnapshot: toAuditSnapshot(existing),
       afterSnapshot: null,
     });
+
+    // Invalidate public cache — soft-deleted article must stop being served immediately.
+    if (existing.status === ContentStatus.PUBLISHED) {
+      await this.publicService.invalidateNewsArticle(existing.slug);
+    }
   }
 
   // ─── Lifecycle transitions ────────────────────────────────────────────────
@@ -621,6 +635,9 @@ export class NewsService {
       metadata: { cardCount: cards.length },
     });
 
+    // Invalidate public cache so the portal serves fresh content immediately.
+    await this.publicService.invalidateNewsArticle((updated as ArticleSummaryRow).slug);
+
     return mapFull(updated as ArticleFullRow, cards);
   }
 
@@ -662,6 +679,9 @@ export class NewsService {
       metadata: { transition: 'PUBLISHED→DRAFT' },
     });
 
+    // Invalidate public cache — article is no longer publicly accessible.
+    await this.publicService.invalidateNewsArticle((updated as ArticleSummaryRow).slug);
+
     return mapFull(updated as ArticleFullRow, cards);
   }
 
@@ -699,6 +719,9 @@ export class NewsService {
       beforeSnapshot: before,
       afterSnapshot: toAuditSnapshot(updated as ArticleSummaryRow),
     });
+
+    // Invalidate public cache — article is no longer publicly accessible.
+    await this.publicService.invalidateNewsArticle((updated as ArticleSummaryRow).slug);
 
     return mapFull(updated as ArticleFullRow, cards);
   }

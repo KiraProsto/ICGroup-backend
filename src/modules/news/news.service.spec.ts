@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { NewsService } from './news.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { PublicService } from '../public/public.service.js';
 import { ArticleCardType, ArticleType, ContentStatus, Role } from '../../generated/prisma/enums.js';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
 
@@ -132,6 +133,13 @@ describe('NewsService', () => {
         {
           provide: AuditService,
           useValue: { logAsync: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: PublicService,
+          useValue: {
+            invalidateNewsArticle: jest.fn().mockResolvedValue(undefined),
+            invalidateAllNewsLists: jest.fn().mockResolvedValue(undefined),
+          },
         },
       ],
     }).compile();
