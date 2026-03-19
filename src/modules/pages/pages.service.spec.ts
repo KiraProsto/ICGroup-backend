@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { PagesService } from './pages.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { PublicService } from '../public/public.service.js';
 import { ContentStatus, Role, SectionType } from '../../generated/prisma/enums.js';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
 
@@ -86,6 +87,12 @@ const mockAuditService = {
   logAsync: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockPublicService = {
+  invalidatePage: jest.fn().mockResolvedValue(undefined),
+  invalidateNewsArticle: jest.fn().mockResolvedValue(undefined),
+  invalidateAllNewsLists: jest.fn().mockResolvedValue(undefined),
+};
+
 // ─── Test suite ──────────────────────────────────────────────────────────────
 
 describe('PagesService', () => {
@@ -100,6 +107,7 @@ describe('PagesService', () => {
         PagesService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: PublicService, useValue: mockPublicService },
       ],
     }).compile();
 
@@ -273,6 +281,30 @@ describe('PagesService', () => {
           }),
         }),
       );
+      // DRAFT page → no public cache invalidation
+      expect(mockPublicService.invalidatePage).not.toHaveBeenCalled();
+    });
+
+    it('invalidates public cache when replacing sections on a PUBLISHED page', async () => {
+      const publishedPageRow = { ...pageRow, status: ContentStatus.PUBLISHED };
+      const txClient = {
+        page: {
+          findUnique: jest.fn().mockResolvedValue(publishedPageRow),
+          update: jest.fn().mockResolvedValue(publishedPageRow),
+        },
+        pageSection: {
+          findMany: jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([heroSectionRow]),
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          createMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      };
+      mockPrisma.$transaction.mockImplementation((op: (tx: typeof txClient) => Promise<unknown>) =>
+        op(txClient),
+      );
+
+      await service.replaceSections('about', validUpsertDto, adminActor);
+
+      expect(mockPublicService.invalidatePage).toHaveBeenCalledWith('about');
     });
 
     it('sends correct section payload to createMany', async () => {
@@ -398,6 +430,7 @@ describe('PagesService', () => {
         }),
       );
       expect(mockAuditService.logAsync).toHaveBeenCalledTimes(1);
+      expect(mockPublicService.invalidatePage).toHaveBeenCalledWith('about');
     });
 
     it('throws NotFoundException when page does not exist', async () => {
@@ -446,6 +479,7 @@ describe('PagesService', () => {
         }),
       );
       expect(mockAuditService.logAsync).toHaveBeenCalledTimes(1);
+      expect(mockPublicService.invalidatePage).toHaveBeenCalledWith('about');
     });
 
     it('throws NotFoundException when page does not exist', async () => {
@@ -511,6 +545,18 @@ describe('PagesService', () => {
           data: { name: 'About Us' },
         }),
       );
+      // DRAFT page → no public cache invalidation
+      expect(mockPublicService.invalidatePage).not.toHaveBeenCalled();
+    });
+
+    it('invalidates public cache when renaming a PUBLISHED page', async () => {
+      const publishedPageRow = { ...pageRow, status: ContentStatus.PUBLISHED };
+      mockPrisma.page.findUnique.mockResolvedValue(publishedPageRow);
+      mockPrisma.page.update.mockResolvedValue({ ...publishedPageRow, name: 'About Us' });
+
+      await service.updateName('about', { name: 'About Us' }, adminActor);
+
+      expect(mockPublicService.invalidatePage).toHaveBeenCalledWith('about');
     });
 
     it('logs an UPDATE audit event with before/after snapshots', async () => {

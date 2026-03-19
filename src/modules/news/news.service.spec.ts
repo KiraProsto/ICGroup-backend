@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { NewsService } from './news.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { PublicService } from '../public/public.service.js';
 import { ArticleCardType, ArticleType, ContentStatus, Role } from '../../generated/prisma/enums.js';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
 
@@ -101,6 +102,7 @@ describe('NewsService', () => {
   let service: NewsService;
   let prisma: jest.Mocked<PrismaService>;
   let auditService: jest.Mocked<AuditService>;
+  let publicService: jest.Mocked<PublicService>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -133,12 +135,20 @@ describe('NewsService', () => {
           provide: AuditService,
           useValue: { logAsync: jest.fn().mockResolvedValue(undefined) },
         },
+        {
+          provide: PublicService,
+          useValue: {
+            invalidateNewsArticle: jest.fn().mockResolvedValue(undefined),
+            invalidateAllNewsLists: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
     service = module.get(NewsService);
     prisma = module.get(PrismaService) as jest.Mocked<PrismaService>;
     auditService = module.get(AuditService) as jest.Mocked<AuditService>;
+    publicService = module.get(PublicService) as jest.Mocked<PublicService>;
 
     // Default: $transaction executes the callback with `prisma` acting as the
     // transaction client.  Tests that need to simulate P2034 can override this.
@@ -294,6 +304,21 @@ describe('NewsService', () => {
         expect.objectContaining({ data: expect.objectContaining({ deletedAt: expect.any(Date) }) }),
       );
       expect(auditService.logAsync).toHaveBeenCalledTimes(1);
+      // DRAFT article → no public cache invalidation
+      expect(publicService.invalidateNewsArticle).not.toHaveBeenCalled();
+    });
+
+    it('invalidates public cache when soft-deleting a PUBLISHED article', async () => {
+      const publishedRow = { ...articleSummaryRow, status: ContentStatus.PUBLISHED };
+      (prisma.newsArticle.findFirst as jest.Mock).mockResolvedValue(publishedRow);
+      (prisma.newsArticle.update as jest.Mock).mockResolvedValue({
+        ...publishedRow,
+        deletedAt: new Date(),
+      });
+
+      await service.softDelete('article-uuid-1', actor);
+
+      expect(publicService.invalidateNewsArticle).toHaveBeenCalledWith('test-article');
     });
 
     it('throws NotFoundException when article does not exist', async () => {
@@ -331,6 +356,7 @@ describe('NewsService', () => {
       );
       expect(result.status).toBe(ContentStatus.PUBLISHED);
       expect(auditService.logAsync).toHaveBeenCalledTimes(1);
+      expect(publicService.invalidateNewsArticle).toHaveBeenCalledWith('test-article');
     });
 
     it('throws ConflictException when article is already published', async () => {
@@ -370,6 +396,7 @@ describe('NewsService', () => {
 
       const result = await service.archive('article-uuid-1', actor);
       expect(result.status).toBe(ContentStatus.ARCHIVED);
+      expect(publicService.invalidateNewsArticle).toHaveBeenCalledWith('test-article');
     });
 
     it('throws ConflictException when article is not published', async () => {

@@ -16,6 +16,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
+import { PublicService } from '../public/public.service.js';
 import {
   paginatedResult,
   type PaginatedResult,
@@ -154,6 +155,7 @@ export class PagesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly publicService: PublicService,
   ) {}
 
   // ─── create ──────────────────────────────────────────────────────────────
@@ -262,6 +264,11 @@ export class PagesService {
       afterSnapshot: toAuditSnapshot(updated),
     });
 
+    // Invalidate public cache if the page is already published — name change is immediately visible.
+    if (existing.status === ContentStatus.PUBLISHED) {
+      await this.publicService.invalidatePage(slug);
+    }
+
     return mapPageSummary(updated);
   }
 
@@ -349,6 +356,11 @@ export class PagesService {
       metadata: { sectionCount: result.sections.length },
     });
 
+    // Invalidate public cache if the page is already published — content change is immediately visible.
+    if (result.existingPage.status === ContentStatus.PUBLISHED) {
+      await this.publicService.invalidatePage(slug);
+    }
+
     return mapPage(result.page, result.sections);
   }
 
@@ -392,6 +404,9 @@ export class PagesService {
       beforeSnapshot: before,
       afterSnapshot: toAuditSnapshot(updatedPage),
     });
+
+    // Invalidate public cache so the portal serves fresh content immediately.
+    await this.publicService.invalidatePage(slug);
 
     return mapPage(updatedPage, sections);
   }
@@ -439,6 +454,9 @@ export class PagesService {
       beforeSnapshot: before,
       afterSnapshot: toAuditSnapshot(updatedPage),
     });
+
+    // Invalidate public cache so the portal no longer serves the archived page.
+    await this.publicService.invalidatePage(slug);
 
     return mapPage(updatedPage, sections);
   }
