@@ -18,6 +18,7 @@ import { PublicService } from './public.service.js';
 import { PublicNewsQueryDto } from './dto/public-news-query.dto.js';
 import { PublicNewsDetailDto, PublicNewsSummaryDto } from './dto/public-news-response.dto.js';
 import { PublicPageDto } from './dto/public-page-response.dto.js';
+import type { PaginatedResult } from '../../common/interceptors/transform-response.interceptor.js';
 
 /**
  * Public portal API — no authentication required.
@@ -31,15 +32,15 @@ import { PublicPageDto } from './dto/public-page-response.dto.js';
 export class PublicController {
   constructor(private readonly publicService: PublicService) {}
 
-  // ─── GET /public/pages/:type ──────────────────────────────────────────────
+  // ─── GET /public/pages/:slug ──────────────────────────────────────────────
 
-  @Get('pages/:type')
-  @Throttle({ default: { ttl: 60_000, limit: 120 } })
+  @Get('pages/:slug')
+  @Throttle({ global: { ttl: 60_000, limit: 120 } })
   @ApiOperation({
     summary: 'Get a published page by slug. Returns sections ordered by position.',
   })
   @ApiParam({
-    name: 'type',
+    name: 'slug',
     type: String,
     description: 'URL-safe page slug (e.g. "about", "shareholders")',
     example: 'about',
@@ -49,26 +50,26 @@ export class PublicController {
     type: ApiErrorResponseDto,
     description: 'Page not found or not published',
   })
-  findPage(@Param('type', ParseSlugPipe) slug: string): Promise<PublicPageDto> {
+  findPage(@Param('slug', ParseSlugPipe) slug: string): Promise<PublicPageDto> {
     return this.publicService.findPublishedPage(slug);
   }
 
   // ─── GET /public/news ──────────────────────────────────────────────────────
 
   @Get('news')
-  @Throttle({ default: { ttl: 60_000, limit: 120 } })
+  @Throttle({ global: { ttl: 60_000, limit: 120 } })
   @ApiOperation({
     summary: 'List published news articles (paginated). Optionally filter by type and rubric.',
   })
   @ApiOkResponse({ type: ApiPaginatedResponseDto(PublicNewsSummaryDto) })
-  findNewsList(@Query() query: PublicNewsQueryDto) {
+  findNewsList(@Query() query: PublicNewsQueryDto): Promise<PaginatedResult<PublicNewsSummaryDto>> {
     return this.publicService.findPublishedNewsList(query);
   }
 
   // ─── GET /public/news/:slug ────────────────────────────────────────────────
 
   @Get('news/:slug')
-  @Throttle({ default: { ttl: 60_000, limit: 120 } })
+  @Throttle({ global: { ttl: 60_000, limit: 120 } })
   @ApiOperation({
     summary: 'Get a published news article by slug. Includes pre-rendered HTML body.',
   })

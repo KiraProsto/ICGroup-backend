@@ -281,6 +281,30 @@ describe('PagesService', () => {
           }),
         }),
       );
+      // DRAFT page → no public cache invalidation
+      expect(mockPublicService.invalidatePage).not.toHaveBeenCalled();
+    });
+
+    it('invalidates public cache when replacing sections on a PUBLISHED page', async () => {
+      const publishedPageRow = { ...pageRow, status: ContentStatus.PUBLISHED };
+      const txClient = {
+        page: {
+          findUnique: jest.fn().mockResolvedValue(publishedPageRow),
+          update: jest.fn().mockResolvedValue(publishedPageRow),
+        },
+        pageSection: {
+          findMany: jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([heroSectionRow]),
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          createMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      };
+      mockPrisma.$transaction.mockImplementation((op: (tx: typeof txClient) => Promise<unknown>) =>
+        op(txClient),
+      );
+
+      await service.replaceSections('about', validUpsertDto, adminActor);
+
+      expect(mockPublicService.invalidatePage).toHaveBeenCalledWith('about');
     });
 
     it('sends correct section payload to createMany', async () => {
@@ -406,6 +430,7 @@ describe('PagesService', () => {
         }),
       );
       expect(mockAuditService.logAsync).toHaveBeenCalledTimes(1);
+      expect(mockPublicService.invalidatePage).toHaveBeenCalledWith('about');
     });
 
     it('throws NotFoundException when page does not exist', async () => {
@@ -454,6 +479,7 @@ describe('PagesService', () => {
         }),
       );
       expect(mockAuditService.logAsync).toHaveBeenCalledTimes(1);
+      expect(mockPublicService.invalidatePage).toHaveBeenCalledWith('about');
     });
 
     it('throws NotFoundException when page does not exist', async () => {
@@ -519,6 +545,18 @@ describe('PagesService', () => {
           data: { name: 'About Us' },
         }),
       );
+      // DRAFT page → no public cache invalidation
+      expect(mockPublicService.invalidatePage).not.toHaveBeenCalled();
+    });
+
+    it('invalidates public cache when renaming a PUBLISHED page', async () => {
+      const publishedPageRow = { ...pageRow, status: ContentStatus.PUBLISHED };
+      mockPrisma.page.findUnique.mockResolvedValue(publishedPageRow);
+      mockPrisma.page.update.mockResolvedValue({ ...publishedPageRow, name: 'About Us' });
+
+      await service.updateName('about', { name: 'About Us' }, adminActor);
+
+      expect(mockPublicService.invalidatePage).toHaveBeenCalledWith('about');
     });
 
     it('logs an UPDATE audit event with before/after snapshots', async () => {

@@ -2,7 +2,8 @@ import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../../redis/redis.module.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { ContentStatus, SectionType } from '../../generated/prisma/enums.js';
+import { ContentStatus } from '../../generated/prisma/enums.js';
+import type { SectionType } from '../../generated/prisma/enums.js';
 import {
   paginatedResult,
   type PaginatedResult,
@@ -172,7 +173,12 @@ export class PublicService {
 
     const cached = await this.redis.get(cacheKey);
     if (cached) {
-      return JSON.parse(cached) as PublicPageDto;
+      try {
+        return JSON.parse(cached) as PublicPageDto;
+      } catch {
+        this.logger.warn(`Corrupt cache for page "${slug}", deleting key`);
+        await this.redis.del(cacheKey).catch(() => {});
+      }
     }
 
     const row = await this.prisma.page.findUnique({
@@ -204,7 +210,12 @@ export class PublicService {
 
     const cached = await this.redis.get(cacheKey);
     if (cached) {
-      return JSON.parse(cached) as PaginatedResult<PublicNewsSummaryDto>;
+      try {
+        return JSON.parse(cached) as PaginatedResult<PublicNewsSummaryDto>;
+      } catch {
+        this.logger.warn(`Corrupt news list cache for key "${cacheKey}", deleting key`);
+        await this.redis.del(cacheKey).catch(() => {});
+      }
     }
 
     const page = query.page ?? 1;
@@ -251,7 +262,12 @@ export class PublicService {
 
     const cached = await this.redis.get(cacheKey);
     if (cached) {
-      return JSON.parse(cached) as PublicNewsDetailDto;
+      try {
+        return JSON.parse(cached) as PublicNewsDetailDto;
+      } catch {
+        this.logger.warn(`Corrupt cache for news "${slug}", deleting key`);
+        await this.redis.del(cacheKey).catch(() => {});
+      }
     }
 
     const row = await this.prisma.newsArticle.findUnique({
@@ -277,7 +293,8 @@ export class PublicService {
   // ─── Cache invalidation ───────────────────────────────────────────────────
 
   /**
-   * Deletes the cached page entry. Called by PagesService after a successful publish.
+   * Deletes the cached page entry.
+   * Called by PagesService after mutations to published content.
    */
   async invalidatePage(slug: string): Promise<void> {
     await this.redis.del(cacheKeyPage(slug)).catch((err: unknown) => {
@@ -287,7 +304,7 @@ export class PublicService {
 
   /**
    * Deletes the cached article entry and all matching news list keys.
-   * Called by NewsService after a successful publish.
+   * Called by NewsService after mutations to published content.
    */
   async invalidateNewsArticle(slug: string): Promise<void> {
     await this.redis.del(cacheKeyNewsDetail(slug)).catch((err: unknown) => {

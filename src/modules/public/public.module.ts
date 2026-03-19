@@ -5,7 +5,7 @@ import { PublicService } from './public.service.js';
 /**
  * PublicModule exposes unauthenticated read endpoints for the public portal.
  *
- *   GET /public/pages/:type    → published page by slug
+ *   GET /public/pages/:slug    → published page by slug
  *   GET /public/news           → paginated list of published articles
  *   GET /public/news/:slug     → published article detail (with pre-rendered HTML)
  *
