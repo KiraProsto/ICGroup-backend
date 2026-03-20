@@ -3,9 +3,12 @@ import type { Role } from '../../../generated/prisma/enums.js';
 /**
  * Payload embedded in the short-lived access JWT (15 min).
  * sub  — userId (UUID)
- * role — user role at the time of issuance; embedded for reference but
- *        JwtStrategy.validate() always re-fetches the role from the DB to
- *        prevent stale-role bypasses after privilege changes.
+ * role — user role at the time of issuance; embedded for reference only.
+ *        JwtStrategy.validate() re-fetches the role from a short-lived
+ *        Redis session cache (30 s TTL, backed by DB on miss). The cache
+ *        is actively invalidated by UsersService on any role, isActive, or
+ *        deletedAt mutation, so privilege changes take effect within one
+ *        request cycle.
  * jti  — unique token ID (reserved for access-token revocation if needed)
  */
 export interface JwtAccessPayload {
