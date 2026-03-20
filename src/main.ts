@@ -16,6 +16,7 @@ async function bootstrap() {
   // Replace NestJS default logger with pino — flushes buffered bootstrap logs
   // through pino so all output is JSON from the very first line in production.
   app.useLogger(app.get(PinoLogger));
+  app.flushLogs();
 
   const config = app.get(ConfigService);
   const port = config.get<number>('app.port', 3000);

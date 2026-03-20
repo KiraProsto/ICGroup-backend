@@ -39,7 +39,7 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
         CORS_ORIGINS: Joi.string().default('http://localhost:5173'),
         LOG_LEVEL: Joi.string()
           .valid('trace', 'debug', 'info', 'warn', 'error', 'fatal')
-          .default('info'),
+          .optional(),
         DATABASE_URL: Joi.string().required(),
         REDIS_HOST: Joi.string().default('localhost'),
         REDIS_PORT: Joi.number().default(6379),
@@ -193,11 +193,11 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
     // AuthModule (in that order) so rate-limiting executes before auth.
 
     // AuditInterceptor runs on all HTTP mutation routes that carry @Audit().
-    // It is registered here (not in app.setup.ts) so NestJS DI can inject
-    // AuditService and Reflector into it.
+    // Uses useExisting to reuse the singleton from AuditModule.providers
+    // rather than creating a duplicate instance with useClass.
     {
       provide: APP_INTERCEPTOR,
-      useClass: AuditInterceptor,
+      useExisting: AuditInterceptor,
     },
   ],
 })
