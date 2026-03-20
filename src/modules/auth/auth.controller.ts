@@ -16,8 +16,9 @@ import {
   ApiOperation,
   ApiResponse,
   ApiTags,
+  ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -71,7 +72,7 @@ export class AuthController {
   })
   @ApiBadRequestResponse({ description: 'Validation failed', type: ApiErrorResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid credentials', type: ApiErrorResponseDto })
-  @ApiResponse({ status: 429, description: 'Too many login attempts', type: ApiErrorResponseDto })
+  @ApiTooManyRequestsResponse({ type: ApiErrorResponseDto, description: 'Too many login attempts' })
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
@@ -124,6 +125,7 @@ export class AuthController {
   // ─── POST /auth/logout ────────────────────────────────────────────────────
 
   @Public()
+  @SkipThrottle({ login: true })
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiCookieAuth(REFRESH_TOKEN_COOKIE)
@@ -150,6 +152,7 @@ export class AuthController {
   // No @Public() — protected by the global JwtAuthGuard (APP_GUARD).
   // Do NOT add @UseGuards(JwtAuthGuard) here: the guard is already global and
   // adding it again would cause a double DB query per request.
+  @SkipThrottle({ login: true })
   @Get('me')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get current authenticated user profile' })

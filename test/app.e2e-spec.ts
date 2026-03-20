@@ -7,6 +7,7 @@ import { configureApp } from '../src/app.setup.js';
 import { AppService } from '../src/app.service.js';
 import { DbHealthIndicator } from '../src/modules/health/db-health.indicator.js';
 import { RedisHealthIndicator } from '../src/modules/health/redis-health.indicator.js';
+import { StorageHealthIndicator } from '../src/modules/health/storage-health.indicator.js';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication;
@@ -20,6 +21,10 @@ describe('AppController (e2e)', () => {
   };
 
   const redisHealthIndicator = {
+    pingCheck: jest.fn(),
+  };
+
+  const storageHealthIndicator = {
     pingCheck: jest.fn(),
   };
 
@@ -39,6 +44,10 @@ describe('AppController (e2e)', () => {
         {
           provide: RedisHealthIndicator,
           useValue: redisHealthIndicator,
+        },
+        {
+          provide: StorageHealthIndicator,
+          useValue: storageHealthIndicator,
         },
       ],
     }).compile();

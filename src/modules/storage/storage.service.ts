@@ -28,6 +28,9 @@ export interface UploadResult {
 /** Maximum milliseconds to wait for a single MinIO operation. */
 const OPERATION_TIMEOUT_MS = 30_000;
 
+/** Shorter deadline used by the liveness probe to avoid long health-check hangs. */
+const PING_TIMEOUT_MS = 5_000;
+
 /**
  * Thin wrapper around the MinIO client.
  *
@@ -104,6 +107,22 @@ export class StorageService implements OnModuleInit {
       `removeObject timeout: ${targetBucket}/${key}`,
     );
     this.logger.log(`Deleted ${targetBucket}/${key}`);
+  }
+
+  /**
+   * Liveness probe — verifies that the content bucket is reachable and exists.
+   * Uses a short timeout so health checks respond quickly even when MinIO is
+   * degraded rather than completely unavailable.
+   *
+   * @returns `true` when the bucket exists, `false` when it does not.
+   * @throws when the MinIO server is unreachable or the call times out.
+   */
+  async ping(): Promise<boolean> {
+    return this.withTimeout(
+      this.client.bucketExists(this.contentBucket),
+      PING_TIMEOUT_MS,
+      'MinIO ping timeout',
+    );
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────

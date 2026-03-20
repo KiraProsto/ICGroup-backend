@@ -22,6 +22,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { UsersService } from './users.service.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
@@ -44,6 +45,7 @@ import { CurrentUser, type AuthenticatedUser } from '../auth/decorators/current-
  */
 @ApiTags('admin/users')
 @ApiBearerAuth('access-token')
+@SkipThrottle({ login: true })
 @Controller('admin/users')
 @CheckPolicies((ability) => ability.can('manage', 'User'))
 export class UsersController {

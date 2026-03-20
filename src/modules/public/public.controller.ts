@@ -1,5 +1,5 @@
 import { Controller, Get, Header, Param, Query } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle } from '@nestjs/throttler';
 import {
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -33,6 +33,7 @@ import type { PaginatedResult } from '../../common/interceptors/transform-respon
  */
 @ApiTags('public')
 @Public()
+@SkipThrottle({ login: true })
 @Controller('public')
 export class PublicController {
   constructor(private readonly publicService: PublicService) {}
@@ -40,7 +41,6 @@ export class PublicController {
   // ─── GET /public/pages/:slug ──────────────────────────────────────────────
 
   @Get('pages/:slug')
-  @Throttle({ global: { ttl: 60_000, limit: 120 } })
   @Header('Cache-Control', 'public, max-age=300')
   @ApiOperation({
     summary: 'Get a published page by slug. Returns sections ordered by position.',
@@ -64,7 +64,6 @@ export class PublicController {
   // ─── GET /public/news ──────────────────────────────────────────────────────
 
   @Get('news')
-  @Throttle({ global: { ttl: 60_000, limit: 120 } })
   @Header('Cache-Control', 'public, max-age=300')
   @ApiOperation({
     summary: 'List published news articles (paginated). Optionally filter by type and rubric.',
@@ -78,7 +77,6 @@ export class PublicController {
   // ─── GET /public/news/:slug ────────────────────────────────────────────────
 
   @Get('news/:slug')
-  @Throttle({ global: { ttl: 60_000, limit: 120 } })
   @Header('Cache-Control', 'public, max-age=300')
   @ApiOperation({
     summary: 'Get a published news article by slug. Includes pre-rendered HTML body.',

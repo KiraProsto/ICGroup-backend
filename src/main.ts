@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import helmet from 'helmet';
@@ -9,7 +10,7 @@ import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
   });
 
@@ -29,6 +30,12 @@ async function bootstrap() {
   const isProd = nodeEnv === 'production';
 
   // ── Security ──────────────────────────────────────────────
+  // Trust exactly one proxy hop — required for req.ip to reflect the real
+  // client IP when running behind nginx, an ALB, or any reverse proxy.
+  // Disabled by default; enable via TRUST_PROXY=true when behind a reverse proxy.
+  if (config.get<boolean>('app.trustProxy', false)) {
+    app.set('trust proxy', 1);
+  }
   app.use(helmet());
   app.use(cookieParser());
 
