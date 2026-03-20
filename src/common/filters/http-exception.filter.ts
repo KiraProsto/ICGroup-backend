@@ -92,6 +92,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
+    // /health — pass through raw Terminus JSON so Docker HEALTHCHECK and
+    // load-balancer probes see the standard { status, info, error } shape,
+    // even on 503 (ServiceUnavailableException thrown by @nestjs/terminus).
+    if (getRequestPath(request) === '/health' && exception instanceof HttpException) {
+      const raw = exception.getResponse();
+      response.status(status).json(raw);
+      return;
+    }
+
     let parsedError: ParsedHttpError;
 
     if (exception instanceof HttpException) {

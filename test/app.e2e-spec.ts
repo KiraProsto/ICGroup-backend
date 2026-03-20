@@ -139,6 +139,20 @@ describe('AppController (e2e)', () => {
     });
     storageHealthIndicator.pingCheck.mockResolvedValue({ storage: { status: 'up' } });
 
-    return request(app.getHttpServer()).get('/health').expect(503);
+    return request(app.getHttpServer())
+      .get('/health')
+      .expect(503)
+      .expect((res) => {
+        // Raw Terminus JSON — not wrapped in the error envelope.
+        expect(res.body).toEqual(
+          expect.objectContaining({
+            status: 'error',
+            error: expect.objectContaining({
+              redis: expect.objectContaining({ status: 'down' }),
+            }),
+          }),
+        );
+        expect(res.body).not.toHaveProperty('success');
+      });
   });
 });

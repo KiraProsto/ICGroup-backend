@@ -89,7 +89,7 @@ async function bootstrap() {
         `${signal} received — waiting up to ${shutdownTimeoutMs}ms for graceful shutdown`,
       );
       setTimeout(() => {
-        logger.fatal('Graceful shutdown timed out — forcing process exit');
+        logger.error('Graceful shutdown timed out — forcing process exit');
         process.exit(1);
       }, shutdownTimeoutMs).unref();
     });

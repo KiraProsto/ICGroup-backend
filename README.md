@@ -24,8 +24,9 @@ Built with NestJS 11, Prisma 7, PostgreSQL 16, Redis 7, and MinIO/S3-compatible 
 14. [File Storage (MinIO / S3)](#file-storage-minio--s3)
 15. [Testing](#testing)
 16. [CI / CD](#ci--cd)
-17. [Scripts Reference](#scripts-reference)
-18. [Contributing](#contributing)
+17. [Production Deployment](#production-deployment)
+18. [Scripts Reference](#scripts-reference)
+19. [Contributing](#contributing)
 
 ---
 
@@ -33,7 +34,7 @@ Built with NestJS 11, Prisma 7, PostgreSQL 16, Redis 7, and MinIO/S3-compatible 
 
 | Layer | Technology | Version |
 |---|---|---|
-| Runtime | Node.js (LTS) | 20 |
+| Runtime | Node.js (LTS) | 24 |
 | Language | TypeScript (ESM-only) | 5.7 |
 | Framework | NestJS | 11 |
 | ORM | Prisma (driver-adapter mode) | 7 |
@@ -161,7 +162,7 @@ test/
 
 ### Prerequisites
 
-- **Node.js** 20 LTS
+- **Node.js** 24 LTS
 - **Docker** and **Docker Compose** (for PostgreSQL, Redis, MinIO)
 - **npm** (comes with Node.js)
 
@@ -733,23 +734,71 @@ npm run test:e2e
 
 ### GitHub Actions Pipeline
 
-The CI pipeline runs on every push and pull request to `main`, `master`, and `dev`:
+The CI/CD pipeline runs on every push and pull request to `main`, `master`, and `dev`. On pushes to `main`/`master`, the deploy job automatically deploys to the production VPS:
 
 ```
-┌─────────┐     ┌─────────────┐     ┌────────────┐     ┌──────────────┐
-│  Lint   │────▶│  Unit Tests │────▶│  E2E Tests │────▶│  Docker      │
-│         │     │  + Coverage │     │  (mocked)  │     │  Build/Push  │
-└─────────┘     └─────────────┘     └────────────┘     └──────────────┘
+┌─────────┐     ┌─────────────┐     ┌────────────┐     ┌──────────────┐     ┌──────────┐
+│  Lint   │────▶│  Unit Tests │────▶│  E2E Tests │────▶│  Docker      │────▶│  Deploy  │
+│         │     │  + Coverage │     │  (mocked)  │     │  Build/Push  │     │  (SSH)   │
+└─────────┘     └─────────────┘     └────────────┘     └──────────────┘     └──────────┘
 ```
 
-| Job | Checks |
-|---|---|
-| **Lint** | ESLint, Prettier formatting, TypeScript type check |
-| **Unit Tests** | 285+ tests, coverage report uploaded as artifact |
-| **E2E Tests** | Full HTTP tests with mocked dependencies |
-| **Docker** | Multi-stage build, push to GHCR (non-PR only) |
+| Job | Trigger | What it does |
+|---|---|---|
+| **Lint** | push/PR to main, dev | ESLint, Prettier formatting, TypeScript type check |
+| **Unit Tests** | push/PR to main, dev | 285+ tests, coverage report uploaded as artifact |
+| **E2E Tests** | after lint | Full HTTP tests with mocked dependencies |
+| **Docker** | after all tests | Multi-stage build, push to GHCR (non-PR only) |
+| **Deploy** | push to main only | SSH to VPS → pull image → restart → health check |
 
 All jobs run with least-privilege `permissions: contents: read`. Docker images are tagged with commit SHA, branch name, and `latest` (on main/master).
+
+> For full deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+---
+
+## Production Deployment
+
+### Infrastructure
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  VPS (Docker Compose)                                   │
+│                                                         │
+│  ┌─────────┐    ┌──────┐    ┌───────────────────────┐   │
+│  │ Nginx   │───▶│ App  │───▶│ PostgreSQL 16         │   │
+│  │ :80/443 │    │ :3000│    │ Redis 7               │   │
+│  └─────────┘    └──────┘    │ MinIO (S3)            │   │
+│                             └───────────────────────┘   │
+│  ┌──────────────────┐  ┌──────────────────────────┐     │
+│  │ Portainer CE     │  │ Uptime Kuma              │     │
+│  │ :9443 (DevOps)   │  │ :3001 (Team dashboard)   │     │
+│  └──────────────────┘  └──────────────────────────┘     │
+│  ┌──────────┐                                           │
+│  │ Certbot  │  (auto TLS renewal)                       │
+│  └──────────┘                                           │
+└─────────────────────────────────────────────────────────┘
+```
+
+| Service | Purpose |
+|---|---|
+| **Nginx** | Reverse proxy, TLS termination (Let's Encrypt), rate limiting |
+| **Certbot** | Automatic Let's Encrypt certificate renewal |
+| **Portainer CE** | Docker management UI for DevOps (`:9443`) |
+| **Uptime Kuma** | Team-facing status dashboard with alerts (`:3001`) |
+
+### Monitoring & Dashboards
+
+| Dashboard | URL | Audience | Purpose |
+|---|---|---|---|
+| **Uptime Kuma** | `http://<server>:3001` | Everyone | Service health, uptime history, Telegram/email alerts |
+| **Status Page** | `http://<server>:3001/status/icgroup` | Everyone (shareable link) | Public-facing uptime status |
+| **Portainer** | `https://<server>:9443` | DevOps / Developers | Container management, logs, restart |
+| **GitHub Actions** | GitHub → Actions tab | Developers | CI/CD pipeline runs |
+| **Swagger** | `https://<domain>/api` | Developers | API documentation |
+| **Health endpoint** | `https://<domain>/health` | Automated checks | Machine-readable health |
+
+> For full deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 
