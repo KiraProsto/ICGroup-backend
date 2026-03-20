@@ -7,5 +7,5 @@ export type { AuditEventData, AuditJobData } from './interfaces/audit-event.inte
 export {
   ACTOR_IP_MAX_LENGTH,
   ACTOR_USER_AGENT_MAX_LENGTH,
-} from './interfaces/audit-event.interface.js';
+} from '../../common/constants/audit.constants.js';
 export type { AuditMeta } from './decorators/audit.decorator.js';

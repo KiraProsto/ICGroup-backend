@@ -39,7 +39,13 @@ function makeContext(options: ContextOptions = {}): ExecutionContext {
   const {
     method = 'POST',
     params = {},
-    user = { id: 'actor-1', email: 'a@b.com', role: 'SUPER_ADMIN' },
+    user = {
+      id: 'actor-1',
+      email: 'a@b.com',
+      role: 'SUPER_ADMIN',
+      ip: '10.0.0.1',
+      userAgent: 'Jest/1.0',
+    },
     contextType = 'http',
   } = options;
 
@@ -161,18 +167,28 @@ describe('AuditInterceptor', () => {
       });
   });
 
-  it('does not await logAsync — returns the response before the job is enqueued', (done) => {
-    // logAsync resolves on its own, but the handler should not wait for it
-    let resolveAsync!: () => void;
-    const asyncPromise = new Promise<void>((r) => (resolveAsync = r));
+  it('awaits logAsync and still emits the response body', (done) => {
     mockReflector.getAllAndOverride.mockReturnValue(operationalMeta);
-    mockAuditService.logAsync.mockReturnValue(asyncPromise);
+    mockAuditService.logAsync.mockResolvedValue(undefined);
 
     interceptor.intercept(makeContext(), makeHandler({ id: 'x-1' })).subscribe((v) => {
       expect(v).toEqual({ id: 'x-1' });
-      resolveAsync(); // resolve after subscription completes
+      expect(mockAuditService.logAsync).toHaveBeenCalled();
       done();
     });
+  });
+
+  it('does not propagate logAsync errors — emits the response body despite failure', (done) => {
+    mockReflector.getAllAndOverride.mockReturnValue(operationalMeta);
+    mockAuditService.logAsync.mockRejectedValue(new Error('Queue unavailable'));
+
+    interceptor.intercept(makeContext(), makeHandler({ id: 'x-2' })).subscribe(
+      (v) => {
+        expect(v).toEqual({ id: 'x-2' });
+        done();
+      },
+      () => done.fail('should not propagate the error'),
+    );
   });
 
   // ── Security (sync) events ─────────────────────────────────────────────────

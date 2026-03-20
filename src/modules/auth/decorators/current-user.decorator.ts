@@ -4,7 +4,7 @@ import type { Role } from '../../../generated/prisma/enums.js';
 import {
   ACTOR_IP_MAX_LENGTH,
   ACTOR_USER_AGENT_MAX_LENGTH,
-} from '../../audit/interfaces/audit-event.interface.js';
+} from '../../../common/constants/audit.constants.js';
 
 export interface AuthenticatedUser {
   id: string;

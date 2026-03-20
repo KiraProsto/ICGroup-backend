@@ -242,8 +242,17 @@ export class UsersService {
 
     // Role change = security event → synchronous audit.
     // Other changes = operational → async audit via BullMQ.
+    // The transaction has already committed, so audit failures must not
+    // surface a 500 — log at error level for alerting instead.
     if (isRoleChange) {
-      await this.auditService.logSync(auditPayload);
+      try {
+        await this.auditService.logSync(auditPayload);
+      } catch (error) {
+        this.logger.error(
+          `[SECURITY] Failed to write audit log for role change: userId=${user.id}, actorId=${actor.id}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
     } else {
       await this.auditService.logAsync(auditPayload);
     }

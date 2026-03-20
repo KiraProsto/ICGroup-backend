@@ -301,6 +301,20 @@ describe('UsersService', () => {
       ).rejects.toThrow(ConflictException);
       expect(mockPrisma.user.update).not.toHaveBeenCalled();
     });
+
+    it('succeeds even when logSync fails for role change audit', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(mockManagedUser);
+      mockPrisma.user.update.mockResolvedValue({
+        ...mockUserRow,
+        role: Role.SALES_MANAGER,
+      });
+      mockAuditService.logSync.mockRejectedValue(new Error('DB down'));
+
+      const result = await service.update('uuid-1', { role: Role.SALES_MANAGER }, adminActor);
+
+      expect(result.role).toBe(Role.SALES_MANAGER);
+      expect(mockAuditService.logSync).toHaveBeenCalled();
+    });
   });
 
   // ─── remove (soft delete) ─────────────────────────────────────────────────

@@ -6,10 +6,6 @@ import { catchError, map, mergeMap } from 'rxjs/operators';
 import { AuditService } from '../audit.service.js';
 import { AUDIT_METADATA_KEY, type AuditMeta } from '../decorators/audit.decorator.js';
 import type { AuditEventData } from '../interfaces/audit-event.interface.js';
-import {
-  ACTOR_IP_MAX_LENGTH,
-  ACTOR_USER_AGENT_MAX_LENGTH,
-} from '../interfaces/audit-event.interface.js';
 import type { AuthenticatedUser } from '../../auth/decorators/current-user.decorator.js';
 
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -82,9 +78,8 @@ export class AuditInterceptor implements NestInterceptor {
     }
 
     const actorId = user.id;
-    const actorIp = request.ip?.slice(0, ACTOR_IP_MAX_LENGTH) ?? undefined;
-    const actorUserAgent =
-      request.get('user-agent')?.slice(0, ACTOR_USER_AGENT_MAX_LENGTH) ?? undefined;
+    const actorIp = user.ip;
+    const actorUserAgent = user.userAgent;
 
     return next.handle().pipe(
       mergeMap((responseBody: unknown) => {
@@ -130,8 +125,7 @@ export class AuditInterceptor implements NestInterceptor {
     if (meta.security) {
       await this.auditService.logSync(eventData);
     } else {
-      // Fire-and-forget: errors are handled inside logAsync (it already logs them).
-      void this.auditService.logAsync(eventData);
+      await this.auditService.logAsync(eventData);
     }
   }
 }

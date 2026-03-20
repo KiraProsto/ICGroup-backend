@@ -4,8 +4,14 @@ import { Queue } from 'bullmq';
 import { v4 as uuidv4 } from 'uuid';
 import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import {
+  paginatedResult,
+  type PaginatedResult,
+} from '../../common/interceptors/transform-response.interceptor.js';
 import { AUDIT_QUEUE_NAME, AUDIT_JOB_NAME } from './audit.constants.js';
 import type { AuditEventData, AuditJobData } from './interfaces/audit-event.interface.js';
+import type { ListAuditQueryDto } from './dto/list-audit-query.dto.js';
+import type { AuditLogResponseDto } from './dto/audit-log-response.dto.js';
 
 /**
  * AuditService provides two writing modes:
@@ -81,5 +87,66 @@ export class AuditService {
         error instanceof Error ? error.stack : String(error),
       );
     }
+  }
+
+  // ─── Select fields exposed in list responses ───────────────────────────────
+  private static readonly AUDIT_LOG_SELECT = {
+    id: true,
+    timestamp: true,
+    actorId: true,
+    actorIp: true,
+    actorUserAgent: true,
+    action: true,
+    resourceType: true,
+    resourceId: true,
+    status: true,
+  } as const;
+
+  /**
+   * Returns a paginated, filtered list of audit log entries.
+   * Heavy JSONB columns (beforeSnapshot, afterSnapshot, metadata) are
+   * intentionally excluded from list responses.
+   */
+  async findAll(query: ListAuditQueryDto): Promise<PaginatedResult<AuditLogResponseDto>> {
+    const page = query.page ?? 1;
+    const perPage = query.perPage ?? 20;
+    const skip = (page - 1) * perPage;
+
+    const where: Prisma.AuditLogWhereInput = {
+      ...(query.actorId ? { actorId: query.actorId } : {}),
+      ...(query.action ? { action: query.action } : {}),
+      ...(query.resourceType ? { resourceType: query.resourceType } : {}),
+      ...(query.dateFrom || query.dateTo
+        ? {
+            timestamp: {
+              ...(query.dateFrom ? { gte: new Date(query.dateFrom) } : {}),
+              ...(query.dateTo ? { lte: new Date(query.dateTo) } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const [logs, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        select: AuditService.AUDIT_LOG_SELECT,
+        orderBy: { timestamp: 'desc' },
+        skip,
+        take: perPage,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    const items: AuditLogResponseDto[] = logs.map((log) => ({
+      ...log,
+      timestamp: log.timestamp.toISOString(),
+    }));
+
+    return paginatedResult(items, {
+      total,
+      page,
+      perPage,
+      totalPages: Math.ceil(total / perPage),
+    });
   }
 }
