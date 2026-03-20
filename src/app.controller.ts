@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, VERSION_NEUTRAL, Version } from '@nestjs/common';
 import { ApiExcludeEndpoint, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
@@ -38,6 +38,7 @@ export class AppController {
    * Returns 200 only when PostgreSQL, Redis, and MinIO/S3 are reachable.
    */
   @Get('health')
+  @Version(VERSION_NEUTRAL)
   @Public()
   @SkipThrottle()
   @ApiExcludeEndpoint()

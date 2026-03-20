@@ -77,6 +77,10 @@ export class TransformResponseInterceptor<T> implements NestInterceptor<T, Wrapp
         // 204 No Content — do not wrap; body must remain empty.
         if (res.statusCode === 204) return data;
 
+        // /health — pass through raw Terminus JSON so Docker HEALTHCHECK
+        // and load-balancer probes see the standard { status, info } shape.
+        if (getRequestPath(req) === '/health') return data;
+
         const baseMeta = {
           timestamp: new Date().toISOString(),
           path: getRequestPath(req),

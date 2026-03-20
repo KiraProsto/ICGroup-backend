@@ -89,4 +89,40 @@ describe('AppController (e2e)', () => {
         });
       });
   });
+
+  it('GET /health — returns 200 when all indicators are healthy', () => {
+    healthCheckService.check.mockImplementation((indicators: Array<() => Promise<unknown>>) =>
+      Promise.all(indicators.map((fn) => fn())).then(() => ({
+        status: 'ok',
+        info: {
+          database: { status: 'up' },
+          redis: { status: 'up' },
+          storage: { status: 'up' },
+        },
+      })),
+    );
+    dbHealthIndicator.pingCheck.mockResolvedValue({ database: { status: 'up' } });
+    redisHealthIndicator.pingCheck.mockResolvedValue({ redis: { status: 'up' } });
+    storageHealthIndicator.pingCheck.mockResolvedValue({ storage: { status: 'up' } });
+
+    // The health endpoint is excluded from the global 'api' prefix AND is
+    // VERSION_NEUTRAL so it resolves at /health — matching Docker HEALTHCHECK.
+    return request(app.getHttpServer())
+      .get('/health')
+      .expect(200)
+      .expect((res) => {
+        // Health response bypasses the envelope — raw Terminus JSON.
+        expect(res.body.status).toBe('ok');
+        expect(res.body.info).toEqual(
+          expect.objectContaining({
+            database: { status: 'up' },
+            redis: { status: 'up' },
+            storage: { status: 'up' },
+          }),
+        );
+        expect(dbHealthIndicator.pingCheck).toHaveBeenCalledWith('database');
+        expect(redisHealthIndicator.pingCheck).toHaveBeenCalledWith('redis');
+        expect(storageHealthIndicator.pingCheck).toHaveBeenCalledWith('storage');
+      });
+  });
 });

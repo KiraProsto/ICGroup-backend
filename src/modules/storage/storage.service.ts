@@ -4,6 +4,7 @@ import * as Minio from 'minio';
 import { extname } from 'node:path';
 import { Readable } from 'node:stream';
 import { v4 as uuidv4 } from 'uuid';
+import { withTimeout } from '../../common/utils/with-timeout.js';
 
 export interface UploadParams {
   /** Raw file buffer from multer. */
@@ -82,7 +83,7 @@ export class StorageService implements OnModuleInit {
 
     const stream = Readable.from(params.buffer);
 
-    await this.withTimeout(
+    await withTimeout(
       this.client.putObject(bucket, key, stream, params.buffer.length, {
         'Content-Type': params.mimeType,
       }),
@@ -101,7 +102,7 @@ export class StorageService implements OnModuleInit {
    */
   async delete(key: string, bucket?: string): Promise<void> {
     const targetBucket = bucket ?? this.contentBucket;
-    await this.withTimeout(
+    await withTimeout(
       this.client.removeObject(targetBucket, key),
       OPERATION_TIMEOUT_MS,
       `removeObject timeout: ${targetBucket}/${key}`,
@@ -118,7 +119,7 @@ export class StorageService implements OnModuleInit {
    * @throws when the MinIO server is unreachable or the call times out.
    */
   async ping(): Promise<boolean> {
-    return this.withTimeout(
+    return withTimeout(
       this.client.bucketExists(this.contentBucket),
       PING_TIMEOUT_MS,
       'MinIO ping timeout',
@@ -133,13 +134,13 @@ export class StorageService implements OnModuleInit {
    */
   private async ensureBucketWithPublicPolicy(bucket: string): Promise<void> {
     try {
-      const exists = await this.withTimeout(
+      const exists = await withTimeout(
         this.client.bucketExists(bucket),
         OPERATION_TIMEOUT_MS,
         `bucketExists timeout: ${bucket}`,
       );
       if (!exists) {
-        await this.withTimeout(
+        await withTimeout(
           this.client.makeBucket(bucket),
           OPERATION_TIMEOUT_MS,
           `makeBucket timeout: ${bucket}`,
@@ -168,7 +169,7 @@ export class StorageService implements OnModuleInit {
         },
       ],
     };
-    await this.withTimeout(
+    await withTimeout(
       this.client.setBucketPolicy(bucket, JSON.stringify(policy)),
       OPERATION_TIMEOUT_MS,
       `setBucketPolicy timeout: ${bucket}`,
@@ -210,19 +211,5 @@ export class StorageService implements OnModuleInit {
     const rawExt = extname(originalName.replace(/.*[/\\]/, ''));
     // Only allow safe single extensions: letters, max 6 chars.
     return /^\.[a-zA-Z]{1,6}$/.test(rawExt) ? rawExt.toLowerCase() : '';
-  }
-
-  /** Wraps a promise with a timeout to avoid hanging indefinitely on storage calls. */
-  private withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => reject(new Error(label)), ms);
-      // Prevent the timer from keeping the Node.js event loop alive on its own.
-      // Guard required: fake timers (used in tests) don't implement .unref().
-      timeoutId.unref?.();
-    });
-    return Promise.race([promise, timeoutPromise]).finally(() => {
-      clearTimeout(timeoutId);
-    }) as Promise<T>;
   }
 }

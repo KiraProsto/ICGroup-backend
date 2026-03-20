@@ -28,6 +28,9 @@ import { PublicModule } from './modules/public/public.module.js';
 import { AuditModule, AuditInterceptor } from './modules/audit/index.js';
 import { RedisThrottlerStorage } from './common/throttler-storage.js';
 
+/** Pass 0 to the Lua script's blockDuration → it falls back to the window TTL. */
+const BLOCK_DURATION_USE_TTL = 0;
+
 @Module({
   imports: [
     // ── Config (validates env vars at startup) ─────────────
@@ -160,7 +163,7 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
             name: 'login',
             ttl: config.get<number>('throttle.loginTtl', 60) * 1000,
             limit: config.get<number>('throttle.loginLimit', 5),
-            blockDuration: 0, // 0 → falls back to TTL in the Lua script
+            blockDuration: BLOCK_DURATION_USE_TTL,
           },
         ],
         // Manually constructed rather than DI-resolved because ThrottlerModule's

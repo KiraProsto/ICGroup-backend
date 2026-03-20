@@ -1,7 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
 import { ThrottlerStorage } from '@nestjs/throttler';
 import { Redis } from 'ioredis';
-import { REDIS_CLIENT } from '../redis/redis.module.js';
 
 /** Shape returned by ThrottlerStorage.increment (matches ThrottlerStorageRecord). */
 type ThrottlerStorageRecord = {
@@ -67,9 +65,8 @@ return {hits, remaining, 0, 0}
  *   throttler:<throttlerName>:<tracker>          → hit counter
  *   throttler:<throttlerName>:<tracker>:blocked  → block flag
  */
-@Injectable()
 export class RedisThrottlerStorage implements ThrottlerStorage {
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+  constructor(private readonly redis: Redis) {}
 
   async increment(
     key: string,
