@@ -12,7 +12,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -77,6 +77,7 @@ import {
  */
 @ApiTags('admin/content/news')
 @ApiBearerAuth('access-token')
+@SkipThrottle({ login: true })
 @Controller('admin/content/news')
 export class NewsController {
   constructor(private readonly newsService: NewsService) {}

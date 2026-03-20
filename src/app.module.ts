@@ -12,6 +12,7 @@ import databaseConfig from './config/database.config.js';
 import redisConfig from './config/redis.config.js';
 import authConfig from './config/auth.config.js';
 import storageConfig from './config/storage.config.js';
+import throttleConfig from './config/throttle.config.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -32,7 +33,7 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
     // ── Config (validates env vars at startup) ─────────────
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, redisConfig, authConfig, storageConfig],
+      load: [appConfig, databaseConfig, redisConfig, authConfig, storageConfig, throttleConfig],
       validationSchema: Joi.object({
         NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
         PORT: Joi.number().default(3000),
@@ -140,6 +141,10 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
     }),
 
     // ── Rate limiting (Redis-backed — shared across all instances) ──
+    // Two named throttlers: "global" (all routes) and "login" (auth endpoints only).
+    // The "login" throttler MUST be explicitly opted-in via @Throttle({ login: {} })
+    // and skipped everywhere else via @SkipThrottle({ login: true }); otherwise
+    // it silently caps the entire API at 5 req/min per IP.
     ThrottlerModule.forRootAsync({
       imports: [RedisModule],
       inject: [REDIS_CLIENT, ConfigService],
@@ -147,15 +152,18 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
         throttlers: [
           {
             name: 'global',
-            ttl: config.get<number>('THROTTLE_TTL', 60) * 1000,
-            limit: config.get<number>('THROTTLE_LIMIT', 120),
+            ttl: config.get<number>('throttle.ttl', 60) * 1000,
+            limit: config.get<number>('throttle.limit', 120),
           },
           {
             name: 'login',
-            ttl: config.get<number>('THROTTLE_LOGIN_TTL', 60) * 1000,
-            limit: config.get<number>('THROTTLE_LOGIN_LIMIT', 5),
+            ttl: config.get<number>('throttle.loginTtl', 60) * 1000,
+            limit: config.get<number>('throttle.loginLimit', 5),
+            blockDuration: 0, // 0 → falls back to TTL in the Lua script
           },
         ],
+        // Manually constructed rather than DI-resolved because ThrottlerModule's
+        // forRootAsync factory already receives the Redis client via inject.
         storage: new RedisThrottlerStorage(redis),
       }),
     }),

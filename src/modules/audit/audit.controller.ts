@@ -7,6 +7,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { AuditService } from './audit.service.js';
 import { ListAuditQueryDto } from './dto/list-audit-query.dto.js';
 import { AuditLogResponseDto } from './dto/audit-log-response.dto.js';
@@ -26,6 +27,7 @@ import { ApiPaginatedResponseDto, ApiErrorResponseDto } from '../../common/dto/a
  */
 @ApiTags('admin/audit')
 @ApiBearerAuth('access-token')
+@SkipThrottle({ login: true })
 @Controller('admin/audit')
 @CheckPolicies((ability) => ability.can('manage', 'AuditLog'))
 export class AuditController {

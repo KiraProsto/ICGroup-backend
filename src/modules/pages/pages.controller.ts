@@ -10,6 +10,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -55,6 +56,7 @@ import { UpdatePageDto } from './dto/update-page.dto.js';
  */
 @ApiTags('admin/content/pages')
 @ApiBearerAuth('access-token')
+@SkipThrottle({ login: true })
 @Controller('admin/content/pages')
 export class PagesController {
   constructor(private readonly pagesService: PagesService) {}

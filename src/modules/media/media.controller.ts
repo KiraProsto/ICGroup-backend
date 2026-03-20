@@ -8,6 +8,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { SkipThrottle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -52,6 +53,7 @@ export const ALLOWED_MIME_TYPES = [
  */
 @ApiTags('admin/content/media')
 @ApiBearerAuth('access-token')
+@SkipThrottle({ login: true })
 @Controller('admin/content/media')
 export class MediaController {
   constructor(private readonly storageService: StorageService) {}
