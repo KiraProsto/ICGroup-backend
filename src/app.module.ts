@@ -108,16 +108,22 @@ const nodeEnv = process.env['NODE_ENV'] ?? 'development';
     LoggerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const isProd = config.get<string>('app.nodeEnv', 'development') === 'production';
-        const level = config.get<string>('app.logLevel', isProd ? 'info' : 'debug');
+        const nodeEnv = config.get<string>('app.nodeEnv', 'development');
+        const isProdLike = nodeEnv === 'production' || nodeEnv === 'staging';
+        const level = config.get<string>('app.logLevel', isProdLike ? 'info' : 'debug');
         return {
           pinoHttp: {
             level,
             // Accept X-Request-Id from upstream gateways; generate a UUID otherwise.
             // Echo the resolved ID back as a response header so clients can correlate.
+            // Cap at 128 chars to prevent log-bloat from malicious oversized headers.
             genReqId: (req, res) => {
               const header = req.headers['x-request-id'];
-              const reqId = typeof header === 'string' && header ? header : randomUUID();
+              const MAX_REQ_ID_LEN = 128;
+              const reqId =
+                typeof header === 'string' && header && header.length <= MAX_REQ_ID_LEN
+                  ? header
+                  : randomUUID();
               res.setHeader('X-Request-Id', reqId);
               return reqId;
             },
@@ -131,8 +137,8 @@ const nodeEnv = process.env['NODE_ENV'] ?? 'development';
             autoLogging: {
               ignore: (req) => req.url === '/health',
             },
-            // Human-readable output in development; raw JSON for Docker/prod.
-            ...(isProd
+            // Human-readable output in development; raw JSON for Docker/prod/staging.
+            ...(isProdLike
               ? {}
               : {
                   transport: {

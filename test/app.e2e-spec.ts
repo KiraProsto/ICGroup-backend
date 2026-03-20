@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ServiceUnavailableException } from '@nestjs/common';
 import { HealthCheckService } from '@nestjs/terminus';
 import request from 'supertest';
 import { AppController } from '../src/app.controller.js';
@@ -124,5 +124,21 @@ describe('AppController (e2e)', () => {
         expect(redisHealthIndicator.pingCheck).toHaveBeenCalledWith('redis');
         expect(storageHealthIndicator.pingCheck).toHaveBeenCalledWith('storage');
       });
+  });
+
+  it('GET /health — returns 503 when a dependency is down', () => {
+    const errorBody = {
+      status: 'error',
+      info: { database: { status: 'up' }, storage: { status: 'up' } },
+      error: { redis: { status: 'down', message: 'Redis unreachable' } },
+    };
+    healthCheckService.check.mockRejectedValue(new ServiceUnavailableException(errorBody));
+    dbHealthIndicator.pingCheck.mockResolvedValue({ database: { status: 'up' } });
+    redisHealthIndicator.pingCheck.mockResolvedValue({
+      redis: { status: 'down', message: 'Redis unreachable' },
+    });
+    storageHealthIndicator.pingCheck.mockResolvedValue({ storage: { status: 'up' } });
+
+    return request(app.getHttpServer()).get('/health').expect(503);
   });
 });

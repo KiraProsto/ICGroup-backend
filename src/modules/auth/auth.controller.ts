@@ -36,11 +36,11 @@ import { ApiErrorResponseDto, ApiResponseDto } from '../../common/dto/api-respon
 const REFRESH_TOKEN_COOKIE = 'refresh_token';
 
 /** Cookie options shared across set/clear operations. */
-function refreshCookieOptions(isProd: boolean): CookieOptions {
+function refreshCookieOptions(isProdLike: boolean): CookieOptions {
   return {
     httpOnly: true,
     sameSite: 'strict',
-    secure: isProd,
+    secure: isProdLike,
     path: '/api/v1/auth',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
   };
@@ -49,13 +49,14 @@ function refreshCookieOptions(isProd: boolean): CookieOptions {
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  private readonly isProd: boolean;
+  private readonly isProdLike: boolean;
 
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
   ) {
-    this.isProd = this.configService.get<string>('app.nodeEnv') === 'production';
+    const nodeEnv = this.configService.get<string>('app.nodeEnv');
+    this.isProdLike = nodeEnv === 'production' || nodeEnv === 'staging';
   }
 
   // ─── POST /auth/login ────────────────────────────────────────────────────
@@ -79,7 +80,7 @@ export class AuthController {
   ): Promise<LoginResponseDto> {
     const result = await this.authService.login(dto);
 
-    res.cookie(REFRESH_TOKEN_COOKIE, result.refreshToken, refreshCookieOptions(this.isProd));
+    res.cookie(REFRESH_TOKEN_COOKIE, result.refreshToken, refreshCookieOptions(this.isProdLike));
 
     return {
       accessToken: result.accessToken,
@@ -117,7 +118,7 @@ export class AuthController {
 
     const tokens = await this.authService.refresh(refreshToken);
 
-    res.cookie(REFRESH_TOKEN_COOKIE, tokens.refreshToken, refreshCookieOptions(this.isProd));
+    res.cookie(REFRESH_TOKEN_COOKIE, tokens.refreshToken, refreshCookieOptions(this.isProdLike));
 
     return { accessToken: tokens.accessToken };
   }
@@ -142,7 +143,7 @@ export class AuthController {
     res.clearCookie(REFRESH_TOKEN_COOKIE, {
       httpOnly: true,
       sameSite: 'strict',
-      secure: this.isProd,
+      secure: this.isProdLike,
       path: '/api/v1/auth',
     });
   }
