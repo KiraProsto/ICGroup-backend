@@ -64,10 +64,29 @@ describe('AuditService', () => {
       );
     });
 
-    it('does not throw when the database write fails', async () => {
+    it('propagates the error when the database write fails', async () => {
       mockPrisma.auditLog.create.mockRejectedValue(new Error('DB down'));
 
-      await expect(service.logSync(sampleEvent)).resolves.toBeUndefined();
+      await expect(service.logSync(sampleEvent)).rejects.toThrow('DB down');
+    });
+
+    it('passes actorIp and actorUserAgent to the database', async () => {
+      mockPrisma.auditLog.create.mockResolvedValue({ id: 'log-2' });
+
+      await service.logSync({
+        ...sampleEvent,
+        actorIp: '192.168.1.1',
+        actorUserAgent: 'TestBrowser/1.0',
+      });
+
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            actorIp: '192.168.1.1',
+            actorUserAgent: 'TestBrowser/1.0',
+          }),
+        }),
+      );
     });
   });
 

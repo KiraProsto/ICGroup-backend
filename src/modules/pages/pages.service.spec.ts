@@ -304,6 +304,7 @@ describe('PagesService', () => {
 
       await service.replaceSections('about', validUpsertDto, adminActor);
 
+      expect(mockPublicService.invalidatePage).toHaveBeenCalledTimes(1);
       expect(mockPublicService.invalidatePage).toHaveBeenCalledWith('about');
     });
 
@@ -430,6 +431,7 @@ describe('PagesService', () => {
         }),
       );
       expect(mockAuditService.logAsync).toHaveBeenCalledTimes(1);
+      expect(mockPublicService.invalidatePage).toHaveBeenCalledTimes(1);
       expect(mockPublicService.invalidatePage).toHaveBeenCalledWith('about');
     });
 
@@ -479,6 +481,7 @@ describe('PagesService', () => {
         }),
       );
       expect(mockAuditService.logAsync).toHaveBeenCalledTimes(1);
+      expect(mockPublicService.invalidatePage).toHaveBeenCalledTimes(1);
       expect(mockPublicService.invalidatePage).toHaveBeenCalledWith('about');
     });
 
@@ -556,6 +559,7 @@ describe('PagesService', () => {
 
       await service.updateName('about', { name: 'About Us' }, adminActor);
 
+      expect(mockPublicService.invalidatePage).toHaveBeenCalledTimes(1);
       expect(mockPublicService.invalidatePage).toHaveBeenCalledWith('about');
     });
 

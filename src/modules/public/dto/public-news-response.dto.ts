@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { ArticleType } from '../../../generated/prisma/enums.js';
+import { ArticleType } from '../../../generated/prisma/enums.js';
 
 // ─── Public news summary (list endpoint) ────────────────────────────────────
 
@@ -13,7 +13,7 @@ export class PublicNewsSummaryDto {
   @ApiProperty({ example: 'Пандемия ударила по компаниям практически всех отраслей' })
   title!: string;
 
-  @ApiProperty({ enum: ['NEWS', 'ARTICLE', 'PRESS_RELEASE', 'INTERVIEW', 'ANNOUNCEMENT'] })
+  @ApiProperty({ enum: ArticleType })
   articleType!: ArticleType;
 
   @ApiPropertyOptional({ example: '550e8400-e29b-41d4-a716-446655440001', nullable: true })

@@ -255,6 +255,12 @@ export class PagesService {
         throw e;
       });
 
+    // Invalidate public cache before writing to audit log — ensures cache is
+    // cleared even if the audit enqueue fails.
+    if (existing.status === ContentStatus.PUBLISHED) {
+      await this.publicService.invalidatePage(slug);
+    }
+
     await this.auditService.logAsync({
       actorId: actor.id,
       action: AuditAction.UPDATE,
@@ -263,11 +269,6 @@ export class PagesService {
       beforeSnapshot: before,
       afterSnapshot: toAuditSnapshot(updated),
     });
-
-    // Invalidate public cache if the page is already published — name change is immediately visible.
-    if (existing.status === ContentStatus.PUBLISHED) {
-      await this.publicService.invalidatePage(slug);
-    }
 
     return mapPageSummary(updated);
   }
@@ -339,6 +340,12 @@ export class PagesService {
       return { page, sections, existingPage, beforeSections };
     });
 
+    // Invalidate public cache before writing to audit log — ensures cache is
+    // cleared even if the audit enqueue fails.
+    if (result.existingPage.status === ContentStatus.PUBLISHED) {
+      await this.publicService.invalidatePage(slug);
+    }
+
     // ── Async audit — includes section summaries for a meaningful diff ────
     await this.auditService.logAsync({
       actorId: actor.id,
@@ -355,11 +362,6 @@ export class PagesService {
       },
       metadata: { sectionCount: result.sections.length },
     });
-
-    // Invalidate public cache if the page is already published — content change is immediately visible.
-    if (result.existingPage.status === ContentStatus.PUBLISHED) {
-      await this.publicService.invalidatePage(slug);
-    }
 
     return mapPage(result.page, result.sections);
   }
@@ -396,6 +398,10 @@ export class PagesService {
 
     const { sections, ...updatedPage } = updated;
 
+    // Invalidate public cache before writing to audit log — ensures cache is
+    // cleared even if the audit enqueue fails.
+    await this.publicService.invalidatePage(slug);
+
     await this.auditService.logAsync({
       actorId: actor.id,
       action: AuditAction.PUBLISH,
@@ -404,9 +410,6 @@ export class PagesService {
       beforeSnapshot: before,
       afterSnapshot: toAuditSnapshot(updatedPage),
     });
-
-    // Invalidate public cache so the portal serves fresh content immediately.
-    await this.publicService.invalidatePage(slug);
 
     return mapPage(updatedPage, sections);
   }
@@ -446,6 +449,10 @@ export class PagesService {
 
     const { sections, ...updatedPage } = updated;
 
+    // Invalidate public cache before writing to audit log — ensures cache is
+    // cleared even if the audit enqueue fails.
+    await this.publicService.invalidatePage(slug);
+
     await this.auditService.logAsync({
       actorId: actor.id,
       action: AuditAction.ARCHIVE,
@@ -454,9 +461,6 @@ export class PagesService {
       beforeSnapshot: before,
       afterSnapshot: toAuditSnapshot(updatedPage),
     });
-
-    // Invalidate public cache so the portal no longer serves the archived page.
-    await this.publicService.invalidatePage(slug);
 
     return mapPage(updatedPage, sections);
   }

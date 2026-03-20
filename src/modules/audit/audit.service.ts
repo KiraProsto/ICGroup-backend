@@ -32,31 +32,24 @@ export class AuditService {
 
   /**
    * Writes an audit log entry directly to the database.
-   * Used for security-critical events that must be recorded synchronously.
-   *
-   * Best-effort: logs errors without rethrowing so the calling mutation
-   * is not rolled back if only the audit write fails.
+   * Used for security-critical events (login, logout, role changes) that
+   * must be recorded — the error propagates so the caller can decide
+   * whether to abort the operation if the audit trail cannot be persisted.
    */
   async logSync(data: AuditEventData): Promise<void> {
-    try {
-      await this.prisma.auditLog.create({
-        data: {
-          actorId: data.actorId,
-          action: data.action,
-          resourceType: data.resourceType,
-          resourceId: data.resourceId,
-          beforeSnapshot: (data.beforeSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-          afterSnapshot: (data.afterSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-          metadata: data.metadata as Prisma.InputJsonValue | undefined,
-        },
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to write synchronous audit log: action=${data.action}, ` +
-          `resource=${data.resourceType}/${data.resourceId}`,
-        error instanceof Error ? error.stack : String(error),
-      );
-    }
+    await this.prisma.auditLog.create({
+      data: {
+        actorId: data.actorId,
+        action: data.action,
+        resourceType: data.resourceType,
+        resourceId: data.resourceId,
+        actorIp: data.actorIp ?? null,
+        actorUserAgent: data.actorUserAgent ?? null,
+        beforeSnapshot: (data.beforeSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        afterSnapshot: (data.afterSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        metadata: data.metadata as Prisma.InputJsonValue | undefined,
+      },
+    });
   }
 
   /**

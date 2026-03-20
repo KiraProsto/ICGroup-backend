@@ -1,6 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
-import { PublicService, PUBLIC_CACHE_TTL_SECONDS } from './public.service.js';
+import {
+  PublicService,
+  PUBLIC_CACHE_TTL_SECONDS,
+  PUBLIC_CACHE_NOT_FOUND_TTL_SECONDS,
+  CACHE_NOT_FOUND_SENTINEL,
+} from './public.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { REDIS_CLIENT } from '../../redis/redis.module.js';
 import { ContentStatus, ArticleType, SectionType } from '../../generated/prisma/enums.js';
@@ -51,10 +56,10 @@ const publishedNewsDetailRow = {
 
 const mockPrisma = {
   page: {
-    findUnique: jest.fn(),
+    findFirst: jest.fn(),
   },
   newsArticle: {
-    findUnique: jest.fn(),
+    findFirst: jest.fn(),
     findMany: jest.fn(),
     count: jest.fn(),
   },
@@ -64,8 +69,7 @@ const mockRedis = {
   get: jest.fn(),
   set: jest.fn(),
   del: jest.fn(),
-  scan: jest.fn(),
-  unlink: jest.fn(),
+  incr: jest.fn(),
 };
 
 // ─── Test suite ──────────────────────────────────────────────────────────────
@@ -79,8 +83,7 @@ describe('PublicService', () => {
     mockRedis.get.mockResolvedValue(null);
     mockRedis.set.mockResolvedValue('OK');
     mockRedis.del.mockResolvedValue(1);
-    mockRedis.scan.mockResolvedValue(['0', []]);
-    mockRedis.unlink.mockResolvedValue(0);
+    mockRedis.incr.mockResolvedValue(1);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -111,11 +114,11 @@ describe('PublicService', () => {
       const result = await service.findPublishedPage('about');
 
       expect(result).toEqual(cached);
-      expect(mockPrisma.page.findUnique).not.toHaveBeenCalled();
+      expect(mockPrisma.page.findFirst).not.toHaveBeenCalled();
     });
 
     it('queries DB on cache miss and caches the result', async () => {
-      mockPrisma.page.findUnique.mockResolvedValue(publishedPageRow);
+      mockPrisma.page.findFirst.mockResolvedValue(publishedPageRow);
 
       const result = await service.findPublishedPage('about');
 
@@ -125,7 +128,7 @@ describe('PublicService', () => {
       expect(result.sections).toHaveLength(2);
       expect(result.sections[0].type).toBe(SectionType.HERO);
 
-      expect(mockPrisma.page.findUnique).toHaveBeenCalledWith(
+      expect(mockPrisma.page.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { slug: 'about', status: ContentStatus.PUBLISHED },
         }),
@@ -139,15 +142,36 @@ describe('PublicService', () => {
     });
 
     it('throws NotFoundException when the page is not PUBLISHED', async () => {
-      mockPrisma.page.findUnique.mockResolvedValue(null);
+      mockPrisma.page.findFirst.mockResolvedValue(null);
 
       await expect(service.findPublishedPage('nonexistent')).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
 
+    it('caches a not-found sentinel (30s TTL) when DB returns nothing', async () => {
+      mockPrisma.page.findFirst.mockResolvedValue(null);
+
+      await expect(service.findPublishedPage('ghost')).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        'public:page:ghost',
+        CACHE_NOT_FOUND_SENTINEL,
+        'EX',
+        PUBLIC_CACHE_NOT_FOUND_TTL_SECONDS,
+      );
+    });
+
+    it('throws NotFoundException immediately from sentinel without hitting DB', async () => {
+      mockRedis.get.mockResolvedValue(CACHE_NOT_FOUND_SENTINEL);
+
+      await expect(service.findPublishedPage('ghost')).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(mockPrisma.page.findFirst).not.toHaveBeenCalled();
+    });
+
     it('still returns the result when Redis set fails', async () => {
-      mockPrisma.page.findUnique.mockResolvedValue(publishedPageRow);
+      mockPrisma.page.findFirst.mockResolvedValue(publishedPageRow);
       mockRedis.set.mockRejectedValue(new Error('Redis down'));
 
       const result = await service.findPublishedPage('about');
@@ -157,13 +181,13 @@ describe('PublicService', () => {
 
     it('falls through to DB when cached value is corrupt JSON', async () => {
       mockRedis.get.mockResolvedValue('NOT-VALID-JSON');
-      mockPrisma.page.findUnique.mockResolvedValue(publishedPageRow);
+      mockPrisma.page.findFirst.mockResolvedValue(publishedPageRow);
 
       const result = await service.findPublishedPage('about');
 
       expect(result.slug).toBe('about');
       expect(mockRedis.del).toHaveBeenCalledWith('public:page:about');
-      expect(mockPrisma.page.findUnique).toHaveBeenCalled();
+      expect(mockPrisma.page.findFirst).toHaveBeenCalled();
     });
   });
 
@@ -289,11 +313,11 @@ describe('PublicService', () => {
       const result = await service.findPublishedNewsBySlug('company-news');
 
       expect(result.slug).toBe('company-news');
-      expect(mockPrisma.newsArticle.findUnique).not.toHaveBeenCalled();
+      expect(mockPrisma.newsArticle.findFirst).not.toHaveBeenCalled();
     });
 
     it('queries DB on cache miss and caches the result', async () => {
-      mockPrisma.newsArticle.findUnique.mockResolvedValue(publishedNewsDetailRow);
+      mockPrisma.newsArticle.findFirst.mockResolvedValue(publishedNewsDetailRow);
 
       const result = await service.findPublishedNewsBySlug('company-news');
 
@@ -302,7 +326,7 @@ describe('PublicService', () => {
       expect(result.socialMeta).toEqual({ ogTitle: 'Company News' });
       expect(result.publishedAt).toBe(now.toISOString());
 
-      expect(mockPrisma.newsArticle.findUnique).toHaveBeenCalledWith(
+      expect(mockPrisma.newsArticle.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { slug: 'company-news', status: ContentStatus.PUBLISHED, deletedAt: null },
         }),
@@ -316,15 +340,40 @@ describe('PublicService', () => {
     });
 
     it('throws NotFoundException when article is not found', async () => {
-      mockPrisma.newsArticle.findUnique.mockResolvedValue(null);
+      mockPrisma.newsArticle.findFirst.mockResolvedValue(null);
 
       await expect(service.findPublishedNewsBySlug('nonexistent')).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
 
+    it('caches a not-found sentinel (30s TTL) when DB returns nothing', async () => {
+      mockPrisma.newsArticle.findFirst.mockResolvedValue(null);
+
+      await expect(service.findPublishedNewsBySlug('ghost')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        'public:news:ghost',
+        CACHE_NOT_FOUND_SENTINEL,
+        'EX',
+        PUBLIC_CACHE_NOT_FOUND_TTL_SECONDS,
+      );
+    });
+
+    it('throws NotFoundException immediately from sentinel without hitting DB', async () => {
+      mockRedis.get.mockResolvedValue(CACHE_NOT_FOUND_SENTINEL);
+
+      await expect(service.findPublishedNewsBySlug('ghost')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+
+      expect(mockPrisma.newsArticle.findFirst).not.toHaveBeenCalled();
+    });
+
     it('still returns the result when Redis set fails', async () => {
-      mockPrisma.newsArticle.findUnique.mockResolvedValue(publishedNewsDetailRow);
+      mockPrisma.newsArticle.findFirst.mockResolvedValue(publishedNewsDetailRow);
       mockRedis.set.mockRejectedValue(new Error('Redis down'));
 
       const result = await service.findPublishedNewsBySlug('company-news');
@@ -334,13 +383,13 @@ describe('PublicService', () => {
 
     it('falls through to DB when cached value is corrupt JSON', async () => {
       mockRedis.get.mockResolvedValue('<<<corrupt>>>');
-      mockPrisma.newsArticle.findUnique.mockResolvedValue(publishedNewsDetailRow);
+      mockPrisma.newsArticle.findFirst.mockResolvedValue(publishedNewsDetailRow);
 
       const result = await service.findPublishedNewsBySlug('company-news');
 
       expect(result.slug).toBe('company-news');
       expect(mockRedis.del).toHaveBeenCalledWith('public:news:company-news');
-      expect(mockPrisma.newsArticle.findUnique).toHaveBeenCalled();
+      expect(mockPrisma.newsArticle.findFirst).toHaveBeenCalled();
     });
   });
 
@@ -363,12 +412,12 @@ describe('PublicService', () => {
   // ─── invalidateNewsArticle ───────────────────────────────────────────────
 
   describe('invalidateNewsArticle', () => {
-    it('deletes the article cache key and invalidates all list caches', async () => {
+    it('deletes the article cache key and increments the list version counter', async () => {
       await service.invalidateNewsArticle('company-news');
 
       expect(mockRedis.del).toHaveBeenCalledWith('public:news:company-news');
-      // invalidateAllNewsLists is called internally → scan was invoked
-      expect(mockRedis.scan).toHaveBeenCalled();
+      // invalidateAllNewsLists is called internally → incr was invoked
+      expect(mockRedis.incr).toHaveBeenCalledWith('public:news:list:ver');
     });
 
     it('does not throw when Redis del fails', async () => {
@@ -378,7 +427,7 @@ describe('PublicService', () => {
     });
 
     it('does not throw when invalidateAllNewsLists fails', async () => {
-      mockRedis.scan.mockRejectedValue(new Error('Redis SCAN error'));
+      mockRedis.incr.mockRejectedValue(new Error('Redis INCR error'));
 
       await expect(service.invalidateNewsArticle('company-news')).resolves.toBeUndefined();
     });
@@ -387,33 +436,10 @@ describe('PublicService', () => {
   // ─── invalidateAllNewsLists ──────────────────────────────────────────────
 
   describe('invalidateAllNewsLists', () => {
-    it('does nothing when no list keys exist', async () => {
-      mockRedis.scan.mockResolvedValue(['0', []]);
-
+    it('increments the news list version counter', async () => {
       await service.invalidateAllNewsLists();
 
-      expect(mockRedis.scan).toHaveBeenCalledTimes(1);
-      expect(mockRedis.unlink).not.toHaveBeenCalled();
-    });
-
-    it('unlinks found list keys across multiple SCAN iterations', async () => {
-      mockRedis.scan
-        .mockResolvedValueOnce(['42', ['public:news:list:p1:pp20:tall:rall']])
-        .mockResolvedValueOnce(['0', ['public:news:list:p2:pp20:tall:rall']]);
-
-      await service.invalidateAllNewsLists();
-
-      expect(mockRedis.scan).toHaveBeenCalledTimes(2);
-      expect(mockRedis.unlink).toHaveBeenCalledTimes(2);
-      expect(mockRedis.unlink).toHaveBeenCalledWith('public:news:list:p1:pp20:tall:rall');
-      expect(mockRedis.unlink).toHaveBeenCalledWith('public:news:list:p2:pp20:tall:rall');
-    });
-
-    it('does not throw when UNLINK fails for a batch', async () => {
-      mockRedis.scan.mockResolvedValue(['0', ['public:news:list:p1:pp20:tall:rall']]);
-      mockRedis.unlink.mockRejectedValue(new Error('UNLINK failed'));
-
-      await expect(service.invalidateAllNewsLists()).resolves.toBeUndefined();
+      expect(mockRedis.incr).toHaveBeenCalledWith('public:news:list:ver');
     });
   });
 });

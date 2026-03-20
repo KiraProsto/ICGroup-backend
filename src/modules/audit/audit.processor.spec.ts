@@ -24,6 +24,8 @@ const sampleJobData: AuditJobData = {
   resourceId: 'res-1',
   beforeSnapshot: null,
   afterSnapshot: { id: 'res-1' },
+  actorIp: '10.0.0.1',
+  actorUserAgent: 'Jest/1.0',
 };
 
 const mockJob = { data: sampleJobData, id: 'job-1' } as unknown;
@@ -53,6 +55,8 @@ describe('AuditProcessor', () => {
           action: AuditAction.CREATE,
           resourceType: AuditResourceType.User,
           resourceId: 'res-1',
+          actorIp: '10.0.0.1',
+          actorUserAgent: 'Jest/1.0',
         }),
       }),
     );

@@ -16,13 +16,23 @@ import { Prisma } from '../../generated/prisma/client.js';
 
 // ─── Cache configuration ──────────────────────────────────────────────────────
 export const PUBLIC_CACHE_TTL_SECONDS = 300; // 5 minutes
+// Short TTL for not-found tombstones — protects the DB from repeated lookups
+// of non-existent or unpublished slugs (e.g. broken links, bot scans).
+export const PUBLIC_CACHE_NOT_FOUND_TTL_SECONDS = 30;
+// Sentinel stored in Redis to represent a confirmed not-found result.
+export const CACHE_NOT_FOUND_SENTINEL = '__not_found__';
+// Redis key holding the current version counter for news list caches.
+// INCR-ing this key effectively invalidates all existing list entries because
+// subsequent reads produce cache keys with the new version — old keys expire
+// naturally via TTL.
+export const NEWS_LIST_VERSION_KEY = 'public:news:list:ver';
 
 export const cacheKeyPage = (slug: string): string => `public:page:${slug}`;
 export const cacheKeyNewsDetail = (slug: string): string => `public:news:${slug}`;
-export const CACHE_NEWS_LIST_PATTERN = 'public:news:list:*';
 
-export function cacheKeyNewsList(query: PublicNewsQueryDto): string {
+export function cacheKeyNewsList(query: PublicNewsQueryDto, version: number): string {
   const parts: string[] = [
+    `v${version}`,
     `p${query.page ?? 1}`,
     `pp${query.perPage ?? 20}`,
     query.articleType ? `t${query.articleType}` : 'tall',
@@ -173,6 +183,9 @@ export class PublicService {
 
     const cached = await this.redis.get(cacheKey);
     if (cached) {
+      if (cached === CACHE_NOT_FOUND_SENTINEL) {
+        throw new NotFoundException(`Page "${slug}" not found`);
+      }
       try {
         return JSON.parse(cached) as PublicPageDto;
       } catch {
@@ -181,12 +194,17 @@ export class PublicService {
       }
     }
 
-    const row = await this.prisma.page.findUnique({
+    const row = await this.prisma.page.findFirst({
       where: { slug, status: ContentStatus.PUBLISHED },
       select: PUBLIC_PAGE_SELECT,
     });
 
     if (!row) {
+      await this.redis
+        .set(cacheKey, CACHE_NOT_FOUND_SENTINEL, 'EX', PUBLIC_CACHE_NOT_FOUND_TTL_SECONDS)
+        .catch((err: unknown) => {
+          this.logger.warn(`Failed to set not-found cache for page "${slug}": ${String(err)}`);
+        });
       throw new NotFoundException(`Page "${slug}" not found`);
     }
 
@@ -206,7 +224,10 @@ export class PublicService {
   async findPublishedNewsList(
     query: PublicNewsQueryDto,
   ): Promise<PaginatedResult<PublicNewsSummaryDto>> {
-    const cacheKey = cacheKeyNewsList(query);
+    // Read the current version counter — cache keys include the version so that
+    // an INCR on the counter effectively invalidates all previous list entries.
+    const version = Number(await this.redis.get(NEWS_LIST_VERSION_KEY).catch(() => null)) || 0;
+    const cacheKey = cacheKeyNewsList(query, version);
 
     const cached = await this.redis.get(cacheKey);
     if (cached) {
@@ -262,6 +283,9 @@ export class PublicService {
 
     const cached = await this.redis.get(cacheKey);
     if (cached) {
+      if (cached === CACHE_NOT_FOUND_SENTINEL) {
+        throw new NotFoundException(`News article "${slug}" not found`);
+      }
       try {
         return JSON.parse(cached) as PublicNewsDetailDto;
       } catch {
@@ -270,12 +294,17 @@ export class PublicService {
       }
     }
 
-    const row = await this.prisma.newsArticle.findUnique({
+    const row = await this.prisma.newsArticle.findFirst({
       where: { slug, status: ContentStatus.PUBLISHED, deletedAt: null },
       select: PUBLIC_NEWS_DETAIL_SELECT,
     });
 
     if (!row) {
+      await this.redis
+        .set(cacheKey, CACHE_NOT_FOUND_SENTINEL, 'EX', PUBLIC_CACHE_NOT_FOUND_TTL_SECONDS)
+        .catch((err: unknown) => {
+          this.logger.warn(`Failed to set not-found cache for news "${slug}": ${String(err)}`);
+        });
       throw new NotFoundException(`News article "${slug}" not found`);
     }
 
@@ -317,25 +346,13 @@ export class PublicService {
   }
 
   /**
-   * Scans and removes all cached news list keys (pattern: public:news:list:*).
-   * Uses SCAN + UNLINK to avoid blocking the Redis event loop.
+   * Increments the news list version counter, logically invalidating all
+   * existing list cache entries. Old keys expire naturally via TTL.
+   *
+   * O(1) — replaces the previous SCAN-based approach that was O(N) in the
+   * number of cached list permutations.
    */
   async invalidateAllNewsLists(): Promise<void> {
-    let cursor = '0';
-    do {
-      const [nextCursor, keys] = await this.redis.scan(
-        cursor,
-        'MATCH',
-        CACHE_NEWS_LIST_PATTERN,
-        'COUNT',
-        100,
-      );
-      cursor = nextCursor;
-      if (keys.length > 0) {
-        await this.redis.unlink(...keys).catch((err: unknown) => {
-          this.logger.warn(`UNLINK of news list cache keys failed: ${String(err)}`);
-        });
-      }
-    } while (cursor !== '0');
+    await this.redis.incr(NEWS_LIST_VERSION_KEY);
   }
 }

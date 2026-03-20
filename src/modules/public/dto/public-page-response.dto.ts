@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import type { SectionType } from '../../../generated/prisma/enums.js';
+import { SectionType } from '../../../generated/prisma/enums.js';
 
 // ─── Public page section ──────────────────────────────────────────────────────
 
@@ -7,10 +7,7 @@ export class PublicPageSectionDto {
   @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
   id!: string;
 
-  @ApiProperty({
-    enum: ['HERO', 'FEATURE_GRID', 'TESTIMONIALS', 'CTA', 'TEXT', 'GALLERY'],
-    example: 'HERO',
-  })
+  @ApiProperty({ enum: SectionType, example: 'HERO' })
   type!: SectionType;
 
   @ApiProperty({ example: 0 })

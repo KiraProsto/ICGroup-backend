@@ -21,6 +21,7 @@ import { PagesModule } from './modules/pages/pages.module.js';
 import { NewsModule } from './modules/news/news.module.js';
 import { MediaModule } from './modules/media/media.module.js';
 import { PublicModule } from './modules/public/public.module.js';
+import { AuditModule } from './modules/audit/index.js';
 import { RedisThrottlerStorage } from './common/throttler-storage.js';
 
 @Module({
@@ -135,7 +136,8 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
     // Public portal API (unauthenticated, PUBLISHED content only)
     PublicModule,
 
-    // Additional feature modules will be added here in subsequent tasks:
+    // ── Audit logging (BullMQ queue + processor) ───────────
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [

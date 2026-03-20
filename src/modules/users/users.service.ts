@@ -157,6 +157,8 @@ export class UsersService {
       beforeSnapshot: null,
       afterSnapshot: this.toAuditSnapshot(user),
       metadata: { email: user.email, role: user.role },
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
     });
 
     this.logger.log(`User created: id=${user.id}, role=${user.role}`);
@@ -234,6 +236,8 @@ export class UsersService {
       beforeSnapshot,
       afterSnapshot: this.toAuditSnapshot(user),
       metadata: { changedFields: changedFields.sort() },
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
     };
 
     // Role change = security event → synchronous audit.
@@ -280,6 +284,8 @@ export class UsersService {
       beforeSnapshot,
       afterSnapshot: this.toAuditSnapshot(user),
       metadata: { softDelete: true },
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
     });
 
     this.logger.log(`User soft-deleted: id=${id}`);
@@ -323,6 +329,8 @@ export class UsersService {
       beforeSnapshot,
       afterSnapshot: this.toAuditSnapshot(restored),
       metadata: { restored: true },
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
     });
 
     this.logger.log(`User restored: id=${id}`);
