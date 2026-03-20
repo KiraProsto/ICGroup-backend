@@ -49,8 +49,10 @@ async function bootstrap() {
   // ── Global prefix, versioning, validation ────────────────
   configureApp(app);
 
-  // ── Swagger (disabled in production) ──────────────────────
-  if (!isProdLike) {
+  // ── Swagger ───────────────────────────────────────────────
+  // Enabled by default in dev/test; opt-in via SWAGGER_ENABLED=true in production.
+  const swaggerEnabled = !isProdLike || config.get<boolean>('app.swaggerEnabled', false);
+  if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('ICGroup API')
       .setDescription('ICGroup Admin Panel & Public Portal API')
@@ -101,7 +103,7 @@ async function bootstrap() {
   await app.listen(port);
 
   logger.log(`[${nodeEnv}] Application running on: http://localhost:${port}/api/v1`);
-  if (!isProdLike) {
+  if (swaggerEnabled) {
     logger.log(`Swagger docs: http://localhost:${port}/api/docs`);
   }
 }

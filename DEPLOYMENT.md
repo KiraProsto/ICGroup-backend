@@ -44,9 +44,16 @@ push to main ──▶ Lint ──▶ Tests ──▶ E2E ──▶ Docker Build
 
 ## Prerequisites
 
-- VPS with Ubuntu 22.04+ (2 vCPU, 2 GB RAM, 30 GB SSD minimum)
-- Domain name pointing to VPS IP (A record)
+- VPS with Ubuntu 22.04+ (2 vCPU, 4 GB RAM, 40 GB SSD minimum)
+- Domain name pointing to VPS IP (A record) — optional for initial setup
 - GitHub repository with Actions enabled
+
+> **Windows / PowerShell users:** PowerShell does not support the `<` input
+> redirection operator. Use `Get-Content` piped to `ssh` instead:
+> ```powershell
+> # Instead of: ssh user@host 'cmd' < file.txt
+> Get-Content file.txt | ssh user@host 'cmd'
+> ```
 
 ## Initial Server Setup
 
@@ -66,9 +73,18 @@ This installs Docker, creates a `deploy` user, configures UFW firewall, and sets
 
 ```bash
 # Copy your SSH public key for the deploy user
-ssh root@YOUR_SERVER_IP 'cat >> /home/deploy/.ssh/authorized_keys' < ~/.ssh/id_ed25519.pub
+# Linux / macOS:
+ssh root@YOUR_SERVER_IP 'cat >> /home/deploy/.ssh/authorized_keys' < ~/.ssh/id_rsa.pub
 ssh root@YOUR_SERVER_IP 'chown -R deploy:deploy /home/deploy/.ssh'
 ```
+
+```powershell
+# PowerShell (Windows):
+Get-Content ~/.ssh/id_rsa.pub | ssh root@YOUR_SERVER_IP 'cat >> /home/deploy/.ssh/authorized_keys'
+ssh root@YOUR_SERVER_IP 'chown -R deploy:deploy /home/deploy/.ssh'
+```
+
+> Use whichever key type you have (`id_rsa.pub`, `id_ed25519.pub`, etc.).
 
 ### 3. Copy deployment files
 
@@ -144,12 +160,36 @@ openssl rand -base64 24
 node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```
 
-### 5. First deployment
+### 5. Build the Docker image
+
+If deploying via CI/CD (GHCR), skip this step — the image is pulled automatically.
+For manual / first-time deployment, build the image on the server:
+
+```bash
+# Upload source code from your local machine
+cd /path/to/project
+tar czf /tmp/icgroup-src.tar.gz \
+  --exclude=node_modules --exclude=.git --exclude=dist \
+  --exclude=coverage --exclude=.env* --exclude=.venv .
+
+scp /tmp/icgroup-src.tar.gz deploy@YOUR_SERVER_IP:/opt/icgroup/
+
+# On the server: extract and build
+ssh deploy@YOUR_SERVER_IP
+cd /opt/icgroup
+mkdir -p src && tar xzf icgroup-src.tar.gz
+docker build --target production -t icgroup-backend:latest .
+rm icgroup-src.tar.gz
+```
+
+Then set `APP_IMAGE=icgroup-backend:latest` in `.env.production` (local image, no registry pull).
+
+### 6. Start all services
 
 ```bash
 cd /opt/icgroup
 
-# Pull and start all services
+# Start all services
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 
 # Check status
@@ -159,7 +199,27 @@ docker compose -f docker-compose.prod.yml ps
 docker compose -f docker-compose.prod.yml logs -f app
 ```
 
-### 6. Set up TLS (Let's Encrypt)
+The app entrypoint automatically runs `prisma migrate deploy` before starting.
+
+### 7. Seed initial admin user
+
+```bash
+docker compose -f docker-compose.prod.yml exec app \
+  node -r dotenv/config --import=tsx/esm prisma/seed.ts
+```
+
+Or set the env vars explicitly:
+
+```bash
+docker compose -f docker-compose.prod.yml exec \
+  -e SEED_ADMIN_EMAIL=admin@example.com \
+  -e SEED_ADMIN_PASSWORD='<strong-password>' \
+  app node --import=tsx/esm prisma/seed.ts
+```
+
+The seed is idempotent — safe to run multiple times.
+
+### 8. Set up TLS (Let's Encrypt)
 
 ```bash
 chmod +x deploy/init-letsencrypt.sh
@@ -176,18 +236,25 @@ docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
 docker compose -f docker-compose.prod.yml up -d certbot
 ```
 
-### 7. Access Portainer UI (DevOps / Developers)
+### 9. Access Portainer UI (DevOps / Developers)
 
 Open `https://YOUR_SERVER_IP:9443` in your browser.
 
-On first visit, set an admin password. Portainer provides:
+> **IMPORTANT:** You must set the admin password **within ~5 minutes** of
+> Portainer starting. If it times out, restart the container:
+> ```bash
+> docker compose -f docker-compose.prod.yml restart portainer
+> ```
+> Then immediately open the UI and create your admin account.
+
+Portainer provides:
 - Container monitoring (logs, stats, restart)
 - Image management (pull, remove)
 - Volume and network inspection
 - Stack deployment
 - Real-time container console access
 
-### 8. Set up Uptime Kuma (Team Status Dashboard)
+### 10. Set up Uptime Kuma (Team Status Dashboard)
 
 Open `http://YOUR_SERVER_IP:3001` in your browser.
 
@@ -279,7 +346,7 @@ docker stats --no-stream
 | **Status Page** | `http://<server-ip>:3001/status/icgroup` | **Everyone** (shareable link) | Public-facing uptime status |
 | **Portainer** | `https://<server-ip>:9443` | DevOps / Developers | Container management, logs, restart |
 | **GitHub Actions** | GitHub repo → Actions tab | Developers | CI/CD pipeline runs, build status |
-| **Swagger** | `https://<domain>/api` | Developers | API documentation |
+| **Swagger** | `https://<domain>/api/v1` | Developers | API documentation (OpenAPI) |
 | **Health endpoint** | `https://<domain>/health` | Automated checks | Machine-readable health status |
 
 ## File Structure
@@ -295,4 +362,49 @@ docker stats --no-stream
     │       └── default.conf     # Site config (HTTP or HTTPS)
     ├── setup-server.sh          # Initial server bootstrap
     └── init-letsencrypt.sh      # TLS cert initialization
+```
+
+## Troubleshooting
+
+### Portainer shows "timed out for security purposes"
+
+Portainer locks itself if the admin password isn't set within ~5 minutes of first start.
+Restart it and immediately visit the UI:
+
+```bash
+docker compose -f docker-compose.prod.yml restart portainer
+# Then open https://<server-ip>:9443 right away
+```
+
+### Redis eviction policy warning
+
+BullMQ requires `maxmemory-policy noeviction`. If the app logs show:
+```
+IMPORTANT! Eviction policy is allkeys-lru. It should be "noeviction"
+```
+
+The `docker-compose.prod.yml` Redis command must use `--maxmemory-policy noeviction`.
+After fixing, recreate the Redis container:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d redis
+docker compose -f docker-compose.prod.yml restart app
+```
+
+### App crashes with ESM import errors
+
+The NestJS app uses ESM (`"type": "module"`) with `tsc` compiler (not SWC).
+The `nest-cli.json` must **not** have `"builder": "swc"` — SWC strips `/index.js`
+barrel imports which breaks ESM resolution at runtime.
+
+### Health check returns unhealthy
+
+```bash
+# Check which dependency is down
+curl -s http://localhost:3000/health | python3 -m json.tool
+
+# Check individual container logs
+docker compose -f docker-compose.prod.yml logs --tail=50 postgres
+docker compose -f docker-compose.prod.yml logs --tail=50 redis
+docker compose -f docker-compose.prod.yml logs --tail=50 minio
 ```
