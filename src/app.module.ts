@@ -31,14 +31,29 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
 /** Pass 0 to the Lua script's blockDuration → it falls back to the window TTL. */
 const BLOCK_DURATION_USE_TTL = 0;
 
+// Read NODE_ENV before ConfigModule resolves so we can build the envFilePath list.
+// ConfigModule processes the files in order; earlier entries take priority.
+const nodeEnv = process.env['NODE_ENV'] ?? 'development';
+
 @Module({
   imports: [
     // ── Config (validates env vars at startup) ─────────────
     ConfigModule.forRoot({
       isGlobal: true,
+      // Load env files from most-specific to least-specific.
+      // Actual process env vars (set by Docker / CI / the shell) take
+      // precedence over every file — dotenv never overrides an already-set var.
+      envFilePath: [
+        `.env.${nodeEnv}.local`, // per-developer local overrides
+        `.env.${nodeEnv}`, // environment-specific defaults
+        '.env.local', // local overrides (any env)
+        '.env', // project-wide baseline
+      ],
       load: [appConfig, databaseConfig, redisConfig, authConfig, storageConfig, throttleConfig],
       validationSchema: Joi.object({
-        NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
+        NODE_ENV: Joi.string()
+          .valid('development', 'staging', 'production', 'test')
+          .default('development'),
         PORT: Joi.number().default(3000),
         CORS_ORIGINS: Joi.string().default('http://localhost:5173'),
         LOG_LEVEL: Joi.string()
@@ -47,9 +62,9 @@ const BLOCK_DURATION_USE_TTL = 0;
         DATABASE_URL: Joi.string().required(),
         REDIS_HOST: Joi.string().default('localhost'),
         REDIS_PORT: Joi.number().default(6379),
-        // Required in production to prevent running with no auth on Redis.
+        // Required in production/staging to prevent running with no auth on Redis.
         REDIS_PASSWORD: Joi.when('NODE_ENV', {
-          is: 'production',
+          is: Joi.valid('production', 'staging'),
           then: Joi.string().min(16).required(),
           otherwise: Joi.string().optional(),
         }),
@@ -61,10 +76,10 @@ const BLOCK_DURATION_USE_TTL = 0;
         MINIO_PORT: Joi.number().default(9000),
         MINIO_USE_SSL: Joi.boolean().default(false),
         MINIO_ACCESS_KEY: Joi.string().min(8).required(),
-        // Enforce a strong secret in production; allow shorter values in dev/test
+        // Enforce a strong secret in production/staging; allow shorter values in dev/test
         // so the docker-compose defaults still work during local development.
         MINIO_SECRET_KEY: Joi.when('NODE_ENV', {
-          is: 'production',
+          is: Joi.valid('production', 'staging'),
           then: Joi.string().min(16).required(),
           otherwise: Joi.string().min(1).required(),
         }),
@@ -76,11 +91,13 @@ const BLOCK_DURATION_USE_TTL = 0;
         DB_POOL_CONNECT_TIMEOUT_MS: Joi.number().integer().default(3000),
         DB_POOL_IDLE_TIMEOUT_MS: Joi.number().integer().default(10000),
         DB_STATEMENT_TIMEOUT_MS: Joi.number().integer().min(0).default(30000),
-        THROTTLE_TTL: Joi.number().default(60),
-        THROTTLE_LIMIT: Joi.number().default(120),
-        THROTTLE_LOGIN_TTL: Joi.number().default(60),
-        THROTTLE_LOGIN_LIMIT: Joi.number().default(5),
+        THROTTLE_TTL: Joi.number().integer().positive().default(60), // seconds
+        THROTTLE_LIMIT: Joi.number().integer().positive().default(120),
+        THROTTLE_LOGIN_TTL: Joi.number().integer().positive().default(60), // seconds
+        THROTTLE_LOGIN_LIMIT: Joi.number().integer().positive().default(5),
         TRUST_PROXY: Joi.boolean().default(false),
+        // How long (ms) to wait for graceful shutdown before forcing process.exit(1).
+        SHUTDOWN_TIMEOUT_MS: Joi.number().integer().min(1000).default(10_000),
       }),
       validationOptions: {
         abortEarly: false, // report all validation errors at once
