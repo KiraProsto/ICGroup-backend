@@ -1,0 +1,35 @@
+import type { Role } from '../../../generated/prisma/enums.js';
+
+/**
+ * Payload embedded in the short-lived access JWT (15 min).
+ * sub  — userId (UUID)
+ * role — user role at the time of issuance; embedded for reference only.
+ *        JwtStrategy.validate() re-fetches the role from a short-lived
+ *        Redis session cache (30 s TTL, backed by DB on miss). The cache
+ *        is actively invalidated by UsersService on any role, isActive, or
+ *        deletedAt mutation, so privilege changes take effect within one
+ *        request cycle.
+ * jti  — unique token ID (reserved for access-token revocation if needed)
+ */
+export interface JwtAccessPayload {
+  sub: string;
+  role: Role;
+  jti: string;
+  iat?: number;
+  exp?: number;
+}
+
+/**
+ * Payload embedded in the long-lived refresh JWT (7 days).
+ * sub      — userId (UUID)
+ * jti      — unique token ID; used as the Redis allowlist key
+ * familyId — rotation family; all tokens sharing a familyId that are
+ *            replayed after consumption trigger a full family revocation
+ */
+export interface JwtRefreshPayload {
+  sub: string;
+  jti: string;
+  familyId: string;
+  iat?: number;
+  exp?: number;
+}

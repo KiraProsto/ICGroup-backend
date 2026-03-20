@@ -1,0 +1,334 @@
+// This is your Prisma schema file.
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+//
+// NOTE: Prisma v7 — generated client output is src/generated/prisma/
+// Import from that path, not from @prisma/client.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // url is intentionally absent in Prisma v7: the property is no longer
+  // supported in schema files (see https://pris.ly/d/config-datasource).
+  // Migration CLI reads the connection URL from prisma.config.ts.
+  // Runtime connection is supplied via PrismaPg adapter in PrismaService.
+}
+
+// ─────────────────────────────────────────────
+//  ENUMS
+// ─────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  CONTENT_MANAGER
+  SALES_MANAGER
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// PageType enum removed — pages are now dynamic: slug + name are stored on the
+// Page row itself. New pages are created via POST /admin/content/pages.
+
+enum SectionType {
+  HERO
+  FEATURE_GRID
+  TESTIMONIALS
+  CTA
+  TEXT
+  GALLERY
+}
+
+enum PurchaseStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum ArticleType {
+  NEWS
+  ARTICLE
+  PRESS_RELEASE
+  INTERVIEW
+  ANNOUNCEMENT
+}
+
+enum ArticleCardType {
+  TEXT // Rich-text block (Tiptap ProseMirror JSON)
+  QUOTE // Pull-quote / blockquote
+  PUBLICATION // Embedded reference to another NewsArticle
+  IMAGE // Single image with optional caption
+  VIDEO // Video embed (URL + optional caption)
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PUBLISH
+  ARCHIVE
+}
+
+enum AuditResourceType {
+  User
+  Page
+  NewsArticle
+  Company
+  Purchase
+  PageSection
+  Rubric
+}
+
+enum AuditLogStatus {
+  SUCCESS
+  FAILURE
+}
+
+// ─────────────────────────────────────────────
+//  USERS & AUTH
+// ─────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         Role
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  pages        Page[]
+  newsArticles NewsArticle[]
+  purchases    Purchase[]
+  auditLogs    AuditLog[]
+
+  @@index([role])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+//  CONTENT — PAGES
+// ─────────────────────────────────────────────
+
+model Page {
+  id          String        @id @default(uuid())
+  slug        String        @unique // URL-safe identifier, e.g. "about", "shareholders"
+  name        String // Human-readable title, e.g. "Об IC Group"
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?     @map("published_at")
+  createdById String        @map("created_by")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  sections PageSection[]
+  author   User          @relation(fields: [createdById], references: [id])
+
+  @@index([status])
+  @@index([createdById])
+  @@map("pages")
+}
+
+model PageSection {
+  id        String      @id @default(uuid())
+  pageId    String      @map("page_id")
+  type      SectionType // hero, feature-grid, testimonials, cta, text, gallery
+  order     Int
+  data      Json // JSONB — variable content payload per SectionType, validated by Zod
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @default(now()) @updatedAt @map("updated_at")
+
+  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  // (pageId, order) covers WHERE pageId = ? ORDER BY order queries (leftmost prefix)
+  @@index([pageId, order])
+  @@map("page_sections")
+}
+
+// ─────────────────────────────────────────────
+//  CONTENT — RUBRICS
+// ─────────────────────────────────────────────
+
+model Rubric {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  newsArticles NewsArticle[]
+
+  @@map("rubrics")
+}
+
+// ─────────────────────────────────────────────
+//  CONTENT — NEWS
+// ─────────────────────────────────────────────
+
+model NewsArticle {
+  id               String                   @id @default(uuid())
+  title            String
+  slug             String                   @unique
+  articleType      ArticleType              @default(NEWS) @map("article_type")
+  rubricId         String?                  @map("rubric_id")
+  // Excerpt / Анонс block
+  excerptTitle     String?                  @map("excerpt_title")
+  excerpt          String? // plain text body of the anons block
+  excerptImage     String?                  @map("excerpt_image")
+  // Rich-text body — compiled Tiptap/ProseMirror JSON document (cards stored separately in article_cards)
+  body             Json?
+  // Pre-rendered HTML (generated on publish via generateHTML())
+  bodyHtml         String?                  @map("body_html")
+  // Plain text extraction (generated on publish, powers FTS)
+  bodyText         String?                  @map("body_text")
+  // PostgreSQL-generated tsvector column, kept in schema to prevent drift.
+  bodyTsv          Unsupported("tsvector")? @map("body_tsv")
+  coverImage       String?                  @map("cover_image")
+  status           ContentStatus            @default(DRAFT)
+  publishedAt      DateTime?                @map("published_at")
+  // Social media meta per platform: { facebook, vk, telegram, seo }
+  // Each key: { title: string, text: string, imageUrl: string }
+  socialMeta       Json?                    @map("social_meta")
+  // RSS distribution toggles
+  rssGoogleNews    Boolean                  @default(false) @map("rss_google_news")
+  rssYandexDzen    Boolean                  @default(false) @map("rss_yandex_dzen")
+  rssYandexNews    Boolean                  @default(false) @map("rss_yandex_news")
+  rssDefault       Boolean                  @default(false) @map("rss_default")
+  // Editorial controls
+  publicationIndex Int                      @default(500) @map("publication_index")
+  viewCount        Int                      @default(0) @map("view_count")
+  // Advertisement block
+  // SECURITY: adBannerCode may contain raw ad-tag JavaScript.
+  // It MUST be rendered inside a sandboxed iframe — never injected directly into the page DOM.
+  adBannerCode     String?                  @map("ad_banner_code")
+  adBannerImage    String?                  @map("ad_banner_image")
+  authorId         String                   @map("author_id")
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  updatedAt        DateTime                 @updatedAt @map("updated_at")
+  deletedAt        DateTime?                @map("deleted_at")
+
+  author User          @relation(fields: [authorId], references: [id])
+  rubric Rubric?       @relation(fields: [rubricId], references: [id], onDelete: SetNull)
+  cards  ArticleCard[]
+
+  @@index([status, publishedAt])
+  @@index([authorId])
+  @@index([status, publicationIndex])
+  @@index([status, articleType, publicationIndex])
+  @@index([status, rubricId, publicationIndex])
+  @@map("news_articles")
+}
+
+// ─────────────────────────────────────────────
+//  CONTENT — ARTICLE CARDS
+// ─────────────────────────────────────────────
+
+/**
+ * Article content is built from ordered cards. Each card has a type and a
+ * JSONB data payload validated by Zod in the application layer.
+ * Card.data shapes (per ArticleCardType):
+ * TEXT        → { body: JSONContent }            — Tiptap ProseMirror document
+ * QUOTE       → { text: string }                 — plain blockquote text
+ * PUBLICATION → { articleId: string }            — id of the referenced NewsArticle
+ * IMAGE       → { url: string; caption?: string }— http/https URL only
+ * VIDEO       → { url: string; caption?: string }— http/https URL only
+ */
+model ArticleCard {
+  id        String          @id @default(uuid())
+  articleId String          @map("article_id")
+  type      ArticleCardType
+  order     Int
+  data      Json
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  // Keeps card positions unique per article and covers ordered card fetches.
+  @@unique([articleId, order])
+  @@map("article_cards")
+}
+
+// Full-text search column (applied via raw SQL — see 20260309000002_add_news_fts):
+// body_tsv tsvector GENERATED ALWAYS AS (
+//   to_tsvector('russian', coalesce(title, '') || ' ' || coalesce(body_text, ''))
+// ) STORED — GIN index idx_news_fts covers it.
+
+// ─────────────────────────────────────────────
+//  SALES
+// ─────────────────────────────────────────────
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  inn       String?  @unique // Tax ID (ИНН)
+  industry  String?
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  purchases Purchase[]
+
+  @@index([name])
+  @@map("companies")
+}
+
+model Purchase {
+  id           String         @id @default(uuid())
+  companyId    String         @map("company_id")
+  description  String
+  amount       Decimal        @db.Decimal(15, 2)
+  currency     String         @default("RUB")
+  purchaseDate DateTime       @map("purchase_date")
+  status       PurchaseStatus @default(PENDING)
+  notes        String?
+  createdById  String         @map("created_by_id")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  company   Company @relation(fields: [companyId], references: [id])
+  createdBy User    @relation(fields: [createdById], references: [id])
+
+  @@index([companyId])
+  @@index([purchaseDate])
+  @@index([status])
+  @@index([createdById])
+  @@map("purchases")
+}
+
+// ─────────────────────────────────────────────
+//  AUDIT LOG
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id             String            @id @default(uuid())
+  timestamp      DateTime          @default(now())
+  // Nullable: system events have no actor
+  actorId        String?           @map("actor_id")
+  actorIp        String?           @map("actor_ip") @db.VarChar(45)
+  actorUserAgent String?           @map("actor_user_agent") @db.VarChar(512)
+  action         AuditAction
+  resourceType   AuditResourceType @map("resource_type")
+  resourceId     String?           @map("resource_id")
+  // JSONB snapshots — secrets/hashes are stripped before storing
+  beforeSnapshot Json?             @map("before_snapshot")
+  afterSnapshot  Json?             @map("after_snapshot")
+  status         AuditLogStatus    @default(SUCCESS)
+  metadata       Json?
+
+  // Soft FK — audit logs must survive actor deletion
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}

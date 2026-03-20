@@ -1,0 +1,255 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, dev]
+  pull_request:
+    branches: [main, master, dev]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ─────────────────────────────────────────────
+  #  Lint & static analysis
+  # ─────────────────────────────────────────────
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Prisma generate must run before linting because TS files import
+      # from src/generated/prisma/ which is not committed to the repository.
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Prettier — check formatting
+        run: npm run format:check
+
+      - name: TypeScript — type check
+        run: npm run typecheck
+
+  # ─────────────────────────────────────────────
+  #  Unit tests
+  # ─────────────────────────────────────────────
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same requirement: generated Prisma types are needed at compile time.
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Run unit tests with coverage
+        run: npm run test:cov
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  # ─────────────────────────────────────────────
+  #  E2E tests (mocked — no real service containers)
+  # ─────────────────────────────────────────────
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: [lint]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Run E2E tests
+        run: npm run test:e2e -- --no-coverage
+
+  # ─────────────────────────────────────────────
+  #  Docker — build (PRs) and push (main/master)
+  # ─────────────────────────────────────────────
+  docker:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [lint, test, e2e]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        # Only authenticate when we intend to push; avoids unnecessary token
+        # exposure on PR builds from forks.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Short commit SHA  →  sha-abc1234
+            type=sha,prefix=sha-,format=short
+            # Branch name on push events  →  main, feature-xyz
+            type=ref,event=branch
+            # PR number  →  pr-42
+            type=ref,event=pr
+            # `latest` only on the default branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # target=production selects the final multi-stage layer.
+          # The builder stage inside the Dockerfile runs `prisma generate`
+          # and `nest build`, so no extra step is needed here.
+          target: production
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GitHub Actions cache keeps layer cache across runs.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─────────────────────────────────────────────
+  #  Deploy to production VPS
+  #  Triggers only on push to main/master (not PRs)
+  # ─────────────────────────────────────────────
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [docker]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    environment:
+      name: production
+      url: https://${{ vars.DEPLOY_DOMAIN }}
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout (deploy configs)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            docker-compose.prod.yml
+            deploy/
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+
+            APP_DIR="/opt/icgroup"
+            cd "$APP_DIR"
+
+            echo "==> Logging in to GHCR..."
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+            echo "==> Pulling latest image..."
+            docker compose -f docker-compose.prod.yml pull app
+
+            echo "==> Deploying..."
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            echo "==> Waiting for health check..."
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+                echo "==> Health check passed!"
+                break
+              fi
+              if [ "$i" -eq 30 ]; then
+                echo "==> Health check FAILED after 30 attempts"
+                docker compose -f docker-compose.prod.yml logs --tail=50 app
+                exit 1
+              fi
+              sleep 2
+            done
+
+            echo "==> Cleaning up old images..."
+            docker image prune -f
+
+            echo "==> Deployment complete!"
+
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          script: |
+            echo "==> Container status:"
+            docker compose -f /opt/icgroup/docker-compose.prod.yml ps
+            echo ""
+            echo "==> API health:"
+            curl -sf http://localhost:3000/health | head -c 500
+            echo ""

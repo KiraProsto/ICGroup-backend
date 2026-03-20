@@ -1,0 +1,36 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": [
+      "@swc/jest",
+      {
+        "jsc": {
+          "parser": {
+            "syntax": "typescript",
+            "decorators": true,
+            "dynamicImport": true
+          },
+          "transform": {
+            "decoratorMetadata": true,
+            "legacyDecorator": true
+          },
+          "target": "es2022",
+          "keepClassNames": true
+        },
+        "module": {
+          "type": "commonjs"
+        },
+        "sourceMaps": true
+      }
+    ]
+  },
+  "moduleNameMapper": {
+    "^(\\.{1,2}/.*)\\.js$": "$1"
+  },
+  "transformIgnorePatterns": [
+    "/node_modules/(?!(uuid)/)"
+  ]
+}

@@ -1,0 +1,268 @@
+# ─────────────────────────────────────────────────────────────
+#  Production Docker Compose — ICGroup Backend
+#
+#  Usage:
+#    docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+#
+#  This file is self-contained: app, PostgreSQL, Redis, MinIO,
+#  Nginx reverse proxy, and Portainer (container management UI).
+#
+#  All secrets must be set in .env.production (see .env.production.example).
+# ─────────────────────────────────────────────────────────────
+
+services:
+  # ─────────────────────────────────────────────
+  #  Application (production image from GHCR)
+  # ─────────────────────────────────────────────
+  app:
+    image: ${APP_IMAGE:-ghcr.io/icgroup/icgroup-backend:latest}
+    container_name: icgroup-api
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-content-images}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      TRUST_PROXY: "true"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SHUTDOWN_TIMEOUT_MS: ${SHUTDOWN_TIMEOUT_MS:-10000}
+      DB_POOL_MAX: ${DB_POOL_MAX:-20}
+      DB_POOL_CONNECT_TIMEOUT_MS: ${DB_POOL_CONNECT_TIMEOUT_MS:-3000}
+      DB_POOL_IDLE_TIMEOUT_MS: ${DB_POOL_IDLE_TIMEOUT_MS:-10000}
+      DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
+      THROTTLE_TTL: ${THROTTLE_TTL:-60}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
+      THROTTLE_LOGIN_TTL: ${THROTTLE_LOGIN_TTL:-60}
+      THROTTLE_LOGIN_LIMIT: ${THROTTLE_LOGIN_LIMIT:-5}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - icgroup-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
+  #  PostgreSQL 16
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: icgroup-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Not exposed to host — only accessible via internal network
+    expose:
+      - "5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - icgroup-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
+  #  Redis 7 with AOF persistence
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: icgroup-redis
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --appendfsync everysec
+      --auto-aof-rewrite-percentage 100
+      --auto-aof-rewrite-min-size 64mb
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+    expose:
+      - "6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - icgroup-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
+  #  MinIO — S3-compatible object storage
+  # ─────────────────────────────────────────────
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    container_name: icgroup-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    expose:
+      - "9000"
+      - "9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - icgroup-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
+  #  Nginx — reverse proxy + TLS termination
+  # ─────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: icgroup-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot-etc:/etc/letsencrypt:ro
+      - certbot-var:/var/lib/letsencrypt
+      - certbot-webroot:/var/www/certbot:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - icgroup-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
+  #  Certbot — automatic Let's Encrypt TLS certs
+  # ─────────────────────────────────────────────
+  certbot:
+    image: certbot/certbot:v3.1.0
+    container_name: icgroup-certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    # Initial cert: run manually, then auto-renew via cron-like entrypoint
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done;'"
+    depends_on:
+      - nginx
+    restart: unless-stopped
+    networks:
+      - icgroup-net
+
+  # ─────────────────────────────────────────────
+  #  Portainer CE — Docker management UI
+  #  Access: https://<server-ip>:9443
+  # ─────────────────────────────────────────────
+  portainer:
+    image: portainer/portainer-ce:2.24.1-alpine
+    container_name: icgroup-portainer
+    ports:
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer-data:/data
+    restart: unless-stopped
+    networks:
+      - icgroup-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ─────────────────────────────────────────────
+  #  Uptime Kuma — status & monitoring dashboard
+  #  Visual UI for the whole team (non-technical).
+  #  Access: http://<server-ip>:3001
+  #  Public status page: http://<server-ip>:3001/status/<slug>
+  # ─────────────────────────────────────────────
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: icgroup-status
+    ports:
+      - "3001:3001"
+    volumes:
+      - uptime-kuma-data:/app/data
+    restart: unless-stopped
+    networks:
+      - icgroup-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  miniodata:
+    driver: local
+  certbot-etc:
+    driver: local
+  certbot-var:
+    driver: local
+  certbot-webroot:
+    driver: local
+  portainer-data:
+    driver: local
+  uptime-kuma-data:
+    driver: local
+
+networks:
+  icgroup-net:
+    driver: bridge

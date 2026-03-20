@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+venv/
+env/
+__pycache__/
+*.egg-info/
+dist/
+build/
+
+# Prisma generated client (rebuilt from schema.prisma via `prisma generate`)
+src/generated/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+# .env.development is committed (safe docker-compose defaults, no real secrets).
+# .env.staging and .env.production contain real secrets — never commit them;
+# use .env.staging.example / .env.production.example as templates instead.
+.env
+.env.local
+.env.*.local
+.env.staging
+.env.production
+
+# Logs
+*.log
+logs/
+
+# Build outputs
+out/
+bin/
+obj/
+
+# Temporary files
+*.tmp
+*.temp
+
+ARCHITECTURE.md
+RICH_TEXT_STORAGE_RESEARCH.md
+RESEARCH_FINDINGS.md
+
+coverage/
+
+.github/instructioins/
+.github/prompts/
+.github/copilot-instructions.md
