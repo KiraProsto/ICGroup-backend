@@ -77,6 +77,7 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
         THROTTLE_LIMIT: Joi.number().default(120),
         THROTTLE_LOGIN_TTL: Joi.number().default(60),
         THROTTLE_LOGIN_LIMIT: Joi.number().default(5),
+        TRUST_PROXY: Joi.boolean().default(false),
       }),
       validationOptions: {
         abortEarly: false, // report all validation errors at once

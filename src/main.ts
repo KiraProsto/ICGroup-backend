@@ -32,7 +32,10 @@ async function bootstrap() {
   // ── Security ──────────────────────────────────────────────
   // Trust exactly one proxy hop — required for req.ip to reflect the real
   // client IP when running behind nginx, an ALB, or any reverse proxy.
-  app.set('trust proxy', 1);
+  // Disabled by default; enable via TRUST_PROXY=true when behind a reverse proxy.
+  if (config.get<boolean>('app.trustProxy', false)) {
+    app.set('trust proxy', 1);
+  }
   app.use(helmet());
   app.use(cookieParser());
 

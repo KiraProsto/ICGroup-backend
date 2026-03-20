@@ -7,5 +7,6 @@ export default registerAs('app', () => {
     port: parseInt(process.env['PORT'] ?? '3000', 10),
     corsOrigins: process.env['CORS_ORIGINS'] ?? 'http://localhost:5173',
     logLevel: process.env['LOG_LEVEL'] ?? (nodeEnv === 'production' ? 'info' : 'debug'),
+    trustProxy: process.env['TRUST_PROXY'] === 'true',
   };
 });
