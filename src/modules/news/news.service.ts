@@ -423,6 +423,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.CREATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: article.id,
@@ -534,21 +536,24 @@ export class NewsService {
       select: ARTICLE_SUMMARY_SELECT,
     });
 
+    // Invalidate public cache before writing to audit log — ensures cache is
+    // cleared even if the audit enqueue fails.
+    // Invalidate the old slug key first (covers slug renames).
+    if (existing.status === ContentStatus.PUBLISHED) {
+      await this.publicService.invalidateNewsArticle(existing.slug);
+      // If the slug changed, the new key is warmed on next request — no extra invalidation needed.
+    }
+
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.UPDATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: id,
       beforeSnapshot: before,
       afterSnapshot: toAuditSnapshot(updated),
     });
-
-    // Invalidate public cache for published articles — metadata/slug changes are immediately visible.
-    if (existing.status === ContentStatus.PUBLISHED) {
-      // Invalidate the old slug key first (covers slug renames).
-      await this.publicService.invalidateNewsArticle(existing.slug);
-      // If the slug changed, the new key is warmed on next request — no extra invalidation needed.
-    }
 
     return mapSummary(updated);
   }
@@ -565,19 +570,22 @@ export class NewsService {
       data: { deletedAt: new Date() },
     });
 
+    // Invalidate public cache before writing to audit log — ensures cache is
+    // cleared even if the audit enqueue fails.
+    if (existing.status === ContentStatus.PUBLISHED) {
+      await this.publicService.invalidateNewsArticle(existing.slug);
+    }
+
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.DELETE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: id,
       beforeSnapshot: toAuditSnapshot(existing),
       afterSnapshot: null,
     });
-
-    // Invalidate public cache — soft-deleted article must stop being served immediately.
-    if (existing.status === ContentStatus.PUBLISHED) {
-      await this.publicService.invalidateNewsArticle(existing.slug);
-    }
   }
 
   // ─── Lifecycle transitions ────────────────────────────────────────────────
@@ -625,8 +633,14 @@ export class NewsService {
         throw e;
       });
 
+    // Invalidate public cache before writing to audit log — ensures cache is
+    // cleared even if the audit enqueue fails.
+    await this.publicService.invalidateNewsArticle((updated as ArticleSummaryRow).slug);
+
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.PUBLISH,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: id,
@@ -634,9 +648,6 @@ export class NewsService {
       afterSnapshot: toAuditSnapshot(updated as ArticleSummaryRow),
       metadata: { cardCount: cards.length },
     });
-
-    // Invalidate public cache so the portal serves fresh content immediately.
-    await this.publicService.invalidateNewsArticle((updated as ArticleSummaryRow).slug);
 
     return mapFull(updated as ArticleFullRow, cards);
   }
@@ -669,8 +680,14 @@ export class NewsService {
       orderBy: { order: 'asc' },
     });
 
+    // Invalidate public cache before writing to audit log — ensures cache is
+    // cleared even if the audit enqueue fails.
+    await this.publicService.invalidateNewsArticle((updated as ArticleSummaryRow).slug);
+
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.UPDATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: id,
@@ -678,9 +695,6 @@ export class NewsService {
       afterSnapshot: toAuditSnapshot(updated as ArticleSummaryRow),
       metadata: { transition: 'PUBLISHED→DRAFT' },
     });
-
-    // Invalidate public cache — article is no longer publicly accessible.
-    await this.publicService.invalidateNewsArticle((updated as ArticleSummaryRow).slug);
 
     return mapFull(updated as ArticleFullRow, cards);
   }
@@ -711,17 +725,20 @@ export class NewsService {
       orderBy: { order: 'asc' },
     });
 
+    // Invalidate public cache before writing to audit log — ensures cache is
+    // cleared even if the audit enqueue fails.
+    await this.publicService.invalidateNewsArticle((updated as ArticleSummaryRow).slug);
+
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.ARCHIVE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: id,
       beforeSnapshot: before,
       afterSnapshot: toAuditSnapshot(updated as ArticleSummaryRow),
     });
-
-    // Invalidate public cache — article is no longer publicly accessible.
-    await this.publicService.invalidateNewsArticle((updated as ArticleSummaryRow).slug);
 
     return mapFull(updated as ArticleFullRow, cards);
   }
@@ -849,6 +866,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.CREATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: articleId,
@@ -935,6 +954,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.UPDATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: articleId,
@@ -990,6 +1011,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.DELETE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: articleId,
@@ -1063,6 +1086,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.UPDATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: articleId,
@@ -1432,6 +1457,7 @@ export class NewsService {
       try {
         return await this.prisma.$transaction(operation, {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5_000,
           timeout: 30_000,
         });
       } catch (error) {

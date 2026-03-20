@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module.js';
@@ -11,6 +12,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
   });
+
+  // Replace NestJS default logger with pino — flushes buffered bootstrap logs
+  // through pino so all output is JSON from the very first line in production.
+  app.useLogger(app.get(PinoLogger));
 
   const config = app.get(ConfigService);
   const port = config.get<number>('app.port', 3000);

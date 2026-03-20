@@ -2,8 +2,11 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { randomUUID } from 'node:crypto';
 import Joi from 'joi';
 import { Redis } from 'ioredis';
+import { LoggerModule } from 'nestjs-pino';
 import appConfig from './config/app.config.js';
 import databaseConfig from './config/database.config.js';
 import redisConfig from './config/redis.config.js';
@@ -21,6 +24,7 @@ import { PagesModule } from './modules/pages/pages.module.js';
 import { NewsModule } from './modules/news/news.module.js';
 import { MediaModule } from './modules/media/media.module.js';
 import { PublicModule } from './modules/public/public.module.js';
+import { AuditModule, AuditInterceptor } from './modules/audit/index.js';
 import { RedisThrottlerStorage } from './common/throttler-storage.js';
 
 @Module({
@@ -33,6 +37,9 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
         NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
         PORT: Joi.number().default(3000),
         CORS_ORIGINS: Joi.string().default('http://localhost:5173'),
+        LOG_LEVEL: Joi.string()
+          .valid('trace', 'debug', 'info', 'warn', 'error', 'fatal')
+          .default('info'),
         DATABASE_URL: Joi.string().required(),
         REDIS_HOST: Joi.string().default('localhost'),
         REDIS_PORT: Joi.number().default(6379),
@@ -72,6 +79,47 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
       }),
       validationOptions: {
         abortEarly: false, // report all validation errors at once
+      },
+    }),
+
+    // ── Structured logging (pino — JSON in prod, pretty in dev) ───
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const isProd = config.get<string>('app.nodeEnv', 'development') === 'production';
+        const level = config.get<string>('app.logLevel', isProd ? 'info' : 'debug');
+        return {
+          pinoHttp: {
+            level,
+            // Accept X-Request-Id from upstream gateways; generate a UUID otherwise.
+            // Echo the resolved ID back as a response header so clients can correlate.
+            genReqId: (req, res) => {
+              const header = req.headers['x-request-id'];
+              const reqId = typeof header === 'string' && header ? header : randomUUID();
+              res.setHeader('X-Request-Id', reqId);
+              return reqId;
+            },
+            // Strip auth tokens and cookies from request log entries.
+            redact: {
+              paths: ['req.headers.authorization', 'req.headers.cookie'],
+              censor: '[REDACTED]',
+            },
+            // Suppress auto-logging for health/liveness probes — they are
+            // high-frequency and carry no diagnostic value in logs.
+            autoLogging: {
+              ignore: (req) => req.url === '/health',
+            },
+            // Human-readable output in development; raw JSON for Docker/prod.
+            ...(isProd
+              ? {}
+              : {
+                  transport: {
+                    target: 'pino-pretty',
+                    options: { singleLine: true, colorize: true },
+                  },
+                }),
+          },
+        };
       },
     }),
 
@@ -135,13 +183,22 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
     // Public portal API (unauthenticated, PUBLISHED content only)
     PublicModule,
 
-    // Additional feature modules will be added here in subsequent tasks:
+    // ── Audit logging (BullMQ queue + processor) ───────────
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
     // ThrottlerGuard and JwtAuthGuard are registered as APP_GUARD inside
     // AuthModule (in that order) so rate-limiting executes before auth.
+
+    // AuditInterceptor runs on all HTTP mutation routes that carry @Audit().
+    // It is registered here (not in app.setup.ts) so NestJS DI can inject
+    // AuditService and Reflector into it.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
+    },
   ],
 })
 export class AppModule {}

@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { AuditService } from './audit.service.js';
 import { AuditProcessor } from './audit.processor.js';
+import { AuditInterceptor } from './interceptors/audit.interceptor.js';
+import { AuditController } from './audit.controller.js';
 import { AUDIT_QUEUE_NAME } from './audit.constants.js';
 
 /**
@@ -16,7 +18,8 @@ import { AUDIT_QUEUE_NAME } from './audit.constants.js';
  */
 @Module({
   imports: [BullModule.registerQueue({ name: AUDIT_QUEUE_NAME })],
-  providers: [AuditService, AuditProcessor],
-  exports: [AuditService],
+  controllers: [AuditController],
+  providers: [AuditService, AuditProcessor, AuditInterceptor],
+  exports: [AuditService, AuditInterceptor],
 })
 export class AuditModule {}

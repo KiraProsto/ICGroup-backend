@@ -33,6 +33,8 @@ export class AuditProcessor extends WorkerHost {
           action: data.action,
           resourceType: data.resourceType,
           resourceId: data.resourceId,
+          actorIp: data.actorIp ?? null,
+          actorUserAgent: data.actorUserAgent ?? null,
           beforeSnapshot: (data.beforeSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue,
           afterSnapshot: (data.afterSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue,
           metadata: data.metadata as Prisma.InputJsonValue | undefined,

@@ -12,6 +12,10 @@ export interface AuditEventData {
   beforeSnapshot: Record<string, unknown> | null;
   afterSnapshot: Record<string, unknown> | null;
   metadata?: Record<string, unknown>;
+  /** Source IP address of the request — extracted from the controller layer. */
+  actorIp?: string;
+  /** User-Agent header — extracted from the controller layer. */
+  actorUserAgent?: string;
 }
 
 /**

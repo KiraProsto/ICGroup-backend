@@ -318,6 +318,7 @@ describe('NewsService', () => {
 
       await service.softDelete('article-uuid-1', actor);
 
+      expect(publicService.invalidateNewsArticle).toHaveBeenCalledTimes(1);
       expect(publicService.invalidateNewsArticle).toHaveBeenCalledWith('test-article');
     });
 
@@ -356,6 +357,7 @@ describe('NewsService', () => {
       );
       expect(result.status).toBe(ContentStatus.PUBLISHED);
       expect(auditService.logAsync).toHaveBeenCalledTimes(1);
+      expect(publicService.invalidateNewsArticle).toHaveBeenCalledTimes(1);
       expect(publicService.invalidateNewsArticle).toHaveBeenCalledWith('test-article');
     });
 
@@ -396,6 +398,7 @@ describe('NewsService', () => {
 
       const result = await service.archive('article-uuid-1', actor);
       expect(result.status).toBe(ContentStatus.ARCHIVED);
+      expect(publicService.invalidateNewsArticle).toHaveBeenCalledTimes(1);
       expect(publicService.invalidateNewsArticle).toHaveBeenCalledWith('test-article');
     });
 

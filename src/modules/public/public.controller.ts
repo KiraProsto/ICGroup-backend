@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Header, Param, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiNotFoundResponse,
@@ -6,6 +6,7 @@ import {
   ApiOperation,
   ApiParam,
   ApiTags,
+  ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
 import {
   ApiErrorResponseDto,
@@ -25,6 +26,10 @@ import type { PaginatedResult } from '../../common/interceptors/transform-respon
  * Returns only PUBLISHED content. Responses are Redis-cached (TTL 5 min).
  *
  * Cache is invalidated immediately when content is published via the admin panel.
+ *
+ * NOTE: The `max-age` value in `@Header('Cache-Control', ...)` must match
+ * `PUBLIC_CACHE_TTL_SECONDS` in `public.service.ts` (currently 300s / 5 min).
+ * `@Header()` only accepts string literals so the two cannot share a reference.
  */
 @ApiTags('public')
 @Public()
@@ -36,6 +41,7 @@ export class PublicController {
 
   @Get('pages/:slug')
   @Throttle({ global: { ttl: 60_000, limit: 120 } })
+  @Header('Cache-Control', 'public, max-age=300')
   @ApiOperation({
     summary: 'Get a published page by slug. Returns sections ordered by position.',
   })
@@ -50,6 +56,7 @@ export class PublicController {
     type: ApiErrorResponseDto,
     description: 'Page not found or not published',
   })
+  @ApiTooManyRequestsResponse({ type: ApiErrorResponseDto, description: 'Rate limit exceeded' })
   findPage(@Param('slug', ParseSlugPipe) slug: string): Promise<PublicPageDto> {
     return this.publicService.findPublishedPage(slug);
   }
@@ -58,10 +65,12 @@ export class PublicController {
 
   @Get('news')
   @Throttle({ global: { ttl: 60_000, limit: 120 } })
+  @Header('Cache-Control', 'public, max-age=300')
   @ApiOperation({
     summary: 'List published news articles (paginated). Optionally filter by type and rubric.',
   })
   @ApiOkResponse({ type: ApiPaginatedResponseDto(PublicNewsSummaryDto) })
+  @ApiTooManyRequestsResponse({ type: ApiErrorResponseDto, description: 'Rate limit exceeded' })
   findNewsList(@Query() query: PublicNewsQueryDto): Promise<PaginatedResult<PublicNewsSummaryDto>> {
     return this.publicService.findPublishedNewsList(query);
   }
@@ -70,6 +79,7 @@ export class PublicController {
 
   @Get('news/:slug')
   @Throttle({ global: { ttl: 60_000, limit: 120 } })
+  @Header('Cache-Control', 'public, max-age=300')
   @ApiOperation({
     summary: 'Get a published news article by slug. Includes pre-rendered HTML body.',
   })
@@ -84,6 +94,7 @@ export class PublicController {
     type: ApiErrorResponseDto,
     description: 'Article not found or not published',
   })
+  @ApiTooManyRequestsResponse({ type: ApiErrorResponseDto, description: 'Rate limit exceeded' })
   findNewsBySlug(@Param('slug', ParseSlugPipe) slug: string): Promise<PublicNewsDetailDto> {
     return this.publicService.findPublishedNewsBySlug(slug);
   }
