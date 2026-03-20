@@ -96,6 +96,7 @@ const nodeEnv = process.env['NODE_ENV'] ?? 'development';
         THROTTLE_LOGIN_TTL: Joi.number().integer().positive().default(60), // seconds
         THROTTLE_LOGIN_LIMIT: Joi.number().integer().positive().default(5),
         TRUST_PROXY: Joi.boolean().default(false),
+        SWAGGER_ENABLED: Joi.boolean().default(false),
         // How long (ms) to wait for graceful shutdown before forcing process.exit(1).
         SHUTDOWN_TIMEOUT_MS: Joi.number().integer().min(1000).default(10_000),
       }),

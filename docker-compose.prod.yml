@@ -48,6 +48,7 @@ services:
       THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
       THROTTLE_LOGIN_TTL: ${THROTTLE_LOGIN_TTL:-60}
       THROTTLE_LOGIN_LIMIT: ${THROTTLE_LOGIN_LIMIT:-5}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,8 +108,8 @@ services:
       --appendfsync everysec
       --auto-aof-rewrite-percentage 100
       --auto-aof-rewrite-min-size 64mb
-      --maxmemory 128mb
-      --maxmemory-policy allkeys-lru
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
     expose:
       - "6379"
     volumes:
