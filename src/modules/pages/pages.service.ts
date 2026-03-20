@@ -180,6 +180,8 @@ export class PagesService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.CREATE,
       resourceType: AuditResourceType.Page,
       resourceId: page.id,
@@ -263,6 +265,8 @@ export class PagesService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.UPDATE,
       resourceType: AuditResourceType.Page,
       resourceId: existing.id,
@@ -349,6 +353,8 @@ export class PagesService {
     // ── Async audit — includes section summaries for a meaningful diff ────
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.UPDATE,
       resourceType: AuditResourceType.Page,
       resourceId: result.page.id,
@@ -404,6 +410,8 @@ export class PagesService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.PUBLISH,
       resourceType: AuditResourceType.Page,
       resourceId: page.id,
@@ -455,6 +463,8 @@ export class PagesService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.ARCHIVE,
       resourceType: AuditResourceType.Page,
       resourceId: page.id,
@@ -493,6 +503,7 @@ export class PagesService {
       try {
         return await this.prisma.$transaction(operation, {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5_000,
           timeout: 30_000,
         });
       } catch (error) {

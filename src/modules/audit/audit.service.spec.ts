@@ -110,6 +110,12 @@ describe('AuditService', () => {
       const jobOptions = mockQueue.add.mock.calls[0][2] as { jobId: string };
       expect(jobOptions.jobId).toMatch(/^audit-/);
     });
+
+    it('does not throw when queue.add() rejects', async () => {
+      mockQueue.add.mockRejectedValue(new Error('Redis connection lost'));
+
+      await expect(service.logAsync(sampleEvent)).resolves.toBeUndefined();
+    });
   });
 
   describe('findAll', () => {

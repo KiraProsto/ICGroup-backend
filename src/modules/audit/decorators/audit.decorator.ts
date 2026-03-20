@@ -24,6 +24,10 @@ export interface AuditMeta {
  * response is sent. Operational events are enqueued onto the BullMQ audit
  * queue (fire-and-forget, 3 retries with exponential back-off).
  *
+ * **WARNING:** Do NOT apply this decorator to routes whose service methods
+ * already call `AuditService.logAsync()` / `logSync()` directly — doing so
+ * will produce duplicate audit log entries for a single mutation.
+ *
  * @example Security event — role change
  * ```ts
  * @Audit({ action: AuditAction.UPDATE, resourceType: AuditResourceType.User, security: true })

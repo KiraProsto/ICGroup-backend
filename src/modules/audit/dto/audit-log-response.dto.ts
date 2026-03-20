@@ -1,9 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type {
-  AuditAction,
-  AuditLogStatus,
-  AuditResourceType,
-} from '../../../generated/prisma/enums.js';
+import { AuditAction, AuditLogStatus, AuditResourceType } from '../../../generated/prisma/enums.js';
 
 export class AuditLogResponseDto {
   @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
@@ -21,17 +17,17 @@ export class AuditLogResponseDto {
   @ApiPropertyOptional({ example: 'Mozilla/5.0', nullable: true })
   actorUserAgent!: string | null;
 
-  @ApiProperty({ enum: ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'PUBLISH', 'ARCHIVE'] })
+  @ApiProperty({ enum: AuditAction })
   action!: AuditAction;
 
   @ApiProperty({
-    enum: ['User', 'Page', 'NewsArticle', 'Company', 'Purchase', 'PageSection', 'Rubric'],
+    enum: AuditResourceType,
   })
   resourceType!: AuditResourceType;
 
   @ApiPropertyOptional({ example: '550e8400-e29b-41d4-a716-446655440002', nullable: true })
   resourceId!: string | null;
 
-  @ApiProperty({ enum: ['SUCCESS', 'FAILURE'] })
+  @ApiProperty({ enum: AuditLogStatus })
   status!: AuditLogStatus;
 }

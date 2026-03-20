@@ -26,6 +26,10 @@ import type { PaginatedResult } from '../../common/interceptors/transform-respon
  * Returns only PUBLISHED content. Responses are Redis-cached (TTL 5 min).
  *
  * Cache is invalidated immediately when content is published via the admin panel.
+ *
+ * NOTE: The `max-age` value in `@Header('Cache-Control', ...)` must match
+ * `PUBLIC_CACHE_TTL_SECONDS` in `public.service.ts` (currently 300s / 5 min).
+ * `@Header()` only accepts string literals so the two cannot share a reference.
  */
 @ApiTags('public')
 @Public()

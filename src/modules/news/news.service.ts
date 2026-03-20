@@ -423,6 +423,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.CREATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: article.id,
@@ -544,6 +546,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.UPDATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: id,
@@ -574,6 +578,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.DELETE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: id,
@@ -633,6 +639,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.PUBLISH,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: id,
@@ -678,6 +686,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.UPDATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: id,
@@ -721,6 +731,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.ARCHIVE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: id,
@@ -854,6 +866,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.CREATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: articleId,
@@ -940,6 +954,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.UPDATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: articleId,
@@ -995,6 +1011,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.DELETE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: articleId,
@@ -1068,6 +1086,8 @@ export class NewsService {
 
     await this.auditService.logAsync({
       actorId: actor.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
       action: AuditAction.UPDATE,
       resourceType: AuditResourceType.NewsArticle,
       resourceId: articleId,
@@ -1437,6 +1457,7 @@ export class NewsService {
       try {
         return await this.prisma.$transaction(operation, {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5_000,
           timeout: 30_000,
         });
       } catch (error) {
