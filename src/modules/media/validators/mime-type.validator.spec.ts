@@ -52,7 +52,7 @@ const avifBuf = Buffer.from([
   0x00,
   0x00,
   0x00,
-  0x1c, // box size
+  0x1c, // box size (28 bytes)
   0x66,
   0x74,
   0x79,
@@ -60,8 +60,35 @@ const avifBuf = Buffer.from([
   0x61,
   0x76,
   0x69,
-  0x66, // 'avif' brand
+  0x66, // 'avif' major brand
   ...new Array(10).fill(0),
+]);
+// mif1 major brand with avif in compatible brands (common in Apple/libheif encoders)
+const avifMif1Buf = Buffer.from([
+  0x00,
+  0x00,
+  0x00,
+  0x18, // box size (24 bytes)
+  0x66,
+  0x74,
+  0x79,
+  0x70, // 'ftyp'
+  0x6d,
+  0x69,
+  0x66,
+  0x31, // 'mif1' major brand
+  0x00,
+  0x00,
+  0x00,
+  0x00, // minor version
+  0x61,
+  0x76,
+  0x69,
+  0x66, // 'avif' compatible brand
+  0x6d,
+  0x69,
+  0x66,
+  0x31, // 'mif1' compatible brand
 ]);
 const maliciousBuf = Buffer.from('<script>alert(1)</script>' + '\x00'.repeat(10));
 
@@ -95,6 +122,10 @@ describe('MimeTypeValidator', () => {
 
     it('accepts a valid AVIF', () => {
       expect(validator.isValid(makeFile('image/avif', avifBuf))).toBe(true);
+    });
+
+    it('accepts AVIF with mif1 major brand and avif in compatible brands', () => {
+      expect(validator.isValid(makeFile('image/avif', avifMif1Buf))).toBe(true);
     });
 
     // Allowlist rejections ────────────────────────────────────────────────────

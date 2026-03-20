@@ -76,12 +76,8 @@ export class MimeTypeValidator extends FileValidator<MimeTypeValidatorOptions> {
           buf[5] === 0x61
         );
 
-      case 'image/avif': {
-        // ISOBMFF: 'ftyp' box at offset 4, major brand 'avif' or 'avis'
-        if (buf.subarray(4, 8).toString('ascii') !== 'ftyp') return false;
-        const brand = buf.subarray(8, 12).toString('ascii');
-        return brand === 'avif' || brand === 'avis';
-      }
+      case 'image/avif':
+        return this.isAvifFtyp(buf);
 
       case 'application/pdf':
         return buf.subarray(0, 5).toString('ascii') === '%PDF-';
@@ -90,5 +86,37 @@ export class MimeTypeValidator extends FileValidator<MimeTypeValidatorOptions> {
         // Fail-safe: any type that reaches here is not in the allowlist.
         return false;
     }
+  }
+
+  /**
+   * Validates AVIF by parsing the ISOBMFF ftyp box.
+   *
+   * Structure:
+   *   [0..3]  box size (big-endian u32)
+   *   [4..7]  'ftyp'
+   *   [8..11] major brand
+   *   [12..15] minor version
+   *   [16..]  compatible brands (4 bytes each)
+   *
+   * Many AVIF encoders use 'mif1' or 'msf1' as the major brand and list
+   * 'avif'/'avis' in the compatible brands, so we check both.
+   */
+  private isAvifFtyp(buf: Buffer): boolean {
+    if (buf.subarray(4, 8).toString('ascii') !== 'ftyp') return false;
+
+    const boxSize = buf.readUInt32BE(0);
+    // Sanity: box must fit within buffer and be at least 16 bytes (header + major + minor)
+    const end = Math.min(boxSize, buf.length);
+    if (end < 16) return false;
+
+    // Scan major brand (offset 8) and all compatible brands (offset 16, 20, 24, …)
+    for (let offset = 8; offset + 4 <= end; offset += 4) {
+      // Skip minor_version field at offset 12
+      if (offset === 12) continue;
+      const brand = buf.subarray(offset, offset + 4).toString('ascii');
+      if (brand === 'avif' || brand === 'avis') return true;
+    }
+
+    return false;
   }
 }
