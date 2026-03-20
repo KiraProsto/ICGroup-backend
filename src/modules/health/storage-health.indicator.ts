@@ -25,7 +25,8 @@ export class StorageHealthIndicator {
       }
       return indicator.up();
     } catch (error) {
-      this.logger.warn(`Storage health check failed: ${(error as Error).message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Storage health check failed: ${msg}`);
       return indicator.down({ message: 'Storage unreachable' });
     }
   }

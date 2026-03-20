@@ -30,7 +30,8 @@ export class DbHealthIndicator {
       );
       return indicator.up();
     } catch (error) {
-      this.logger.warn(`Database health check failed: ${(error as Error).message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Database health check failed: ${msg}`);
       return indicator.down({ message: 'Database unreachable' });
     }
   }
