@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import Joi from 'joi';
 import { Redis } from 'ioredis';
 import appConfig from './config/app.config.js';
@@ -21,7 +22,7 @@ import { PagesModule } from './modules/pages/pages.module.js';
 import { NewsModule } from './modules/news/news.module.js';
 import { MediaModule } from './modules/media/media.module.js';
 import { PublicModule } from './modules/public/public.module.js';
-import { AuditModule } from './modules/audit/index.js';
+import { AuditModule, AuditInterceptor } from './modules/audit/index.js';
 import { RedisThrottlerStorage } from './common/throttler-storage.js';
 
 @Module({
@@ -144,6 +145,14 @@ import { RedisThrottlerStorage } from './common/throttler-storage.js';
     AppService,
     // ThrottlerGuard and JwtAuthGuard are registered as APP_GUARD inside
     // AuthModule (in that order) so rate-limiting executes before auth.
+
+    // AuditInterceptor runs on all HTTP mutation routes that carry @Audit().
+    // It is registered here (not in app.setup.ts) so NestJS DI can inject
+    // AuditService and Reflector into it.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
+    },
   ],
 })
 export class AppModule {}

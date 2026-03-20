@@ -1,6 +1,10 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 import type { Request } from 'express';
 import type { Role } from '../../../generated/prisma/enums.js';
+import {
+  ACTOR_IP_MAX_LENGTH,
+  ACTOR_USER_AGENT_MAX_LENGTH,
+} from '../../audit/interfaces/audit-event.interface.js';
 
 export interface AuthenticatedUser {
   id: string;
@@ -26,10 +30,13 @@ export interface AuthenticatedUser {
 export const CurrentUser = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): AuthenticatedUser => {
     const request = ctx.switchToHttp().getRequest<Request & { user: AuthenticatedUser }>();
+    const user = request.user;
     return {
-      ...request.user,
-      ip: request.ip ?? undefined,
-      userAgent: request.get('user-agent') ?? undefined,
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      ip: request.ip?.slice(0, ACTOR_IP_MAX_LENGTH) ?? undefined,
+      userAgent: request.get('user-agent')?.slice(0, ACTOR_USER_AGENT_MAX_LENGTH) ?? undefined,
     };
   },
 );

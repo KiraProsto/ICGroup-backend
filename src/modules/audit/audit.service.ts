@@ -33,8 +33,12 @@ export class AuditService {
   /**
    * Writes an audit log entry directly to the database.
    * Used for security-critical events (login, logout, role changes) that
-   * must be recorded — the error propagates so the caller can decide
+   * must be recorded — the error **propagates** so the caller can decide
    * whether to abort the operation if the audit trail cannot be persisted.
+   *
+   * Note: When called from AuditInterceptor (post-commit context), failures
+   * are caught and logged — the response is still returned. For transactional
+   * guarantees, call logSync directly inside a Prisma transaction.
    */
   async logSync(data: AuditEventData): Promise<void> {
     await this.prisma.auditLog.create({

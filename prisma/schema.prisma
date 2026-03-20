@@ -313,8 +313,8 @@ model AuditLog {
   timestamp      DateTime          @default(now())
   // Nullable: system events have no actor
   actorId        String?           @map("actor_id")
-  actorIp        String?           @map("actor_ip")
-  actorUserAgent String?           @map("actor_user_agent")
+  actorIp        String?           @map("actor_ip") @db.VarChar(45)
+  actorUserAgent String?           @map("actor_user_agent") @db.VarChar(512)
   action         AuditAction
   resourceType   AuditResourceType @map("resource_type")
   resourceId     String?           @map("resource_id")
