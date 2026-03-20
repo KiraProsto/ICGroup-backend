@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ServiceUnavailableException } from '@nestjs/common';
 import { HealthCheckService } from '@nestjs/terminus';
 import request from 'supertest';
 import { AppController } from '../src/app.controller.js';
@@ -87,6 +87,72 @@ describe('AppController (e2e)', () => {
           path: '/api/v1/does-not-exist',
           timestamp: expect.any(String),
         });
+      });
+  });
+
+  it('GET /health — returns 200 when all indicators are healthy', () => {
+    healthCheckService.check.mockImplementation((indicators: Array<() => Promise<unknown>>) =>
+      Promise.all(indicators.map((fn) => fn())).then(() => ({
+        status: 'ok',
+        info: {
+          database: { status: 'up' },
+          redis: { status: 'up' },
+          storage: { status: 'up' },
+        },
+      })),
+    );
+    dbHealthIndicator.pingCheck.mockResolvedValue({ database: { status: 'up' } });
+    redisHealthIndicator.pingCheck.mockResolvedValue({ redis: { status: 'up' } });
+    storageHealthIndicator.pingCheck.mockResolvedValue({ storage: { status: 'up' } });
+
+    // The health endpoint is excluded from the global 'api' prefix AND is
+    // VERSION_NEUTRAL so it resolves at /health — matching Docker HEALTHCHECK.
+    return request(app.getHttpServer())
+      .get('/health')
+      .expect(200)
+      .expect((res) => {
+        // Health response bypasses the envelope — raw Terminus JSON.
+        expect(res.body.status).toBe('ok');
+        expect(res.body.info).toEqual(
+          expect.objectContaining({
+            database: { status: 'up' },
+            redis: { status: 'up' },
+            storage: { status: 'up' },
+          }),
+        );
+        expect(dbHealthIndicator.pingCheck).toHaveBeenCalledWith('database');
+        expect(redisHealthIndicator.pingCheck).toHaveBeenCalledWith('redis');
+        expect(storageHealthIndicator.pingCheck).toHaveBeenCalledWith('storage');
+      });
+  });
+
+  it('GET /health — returns 503 when a dependency is down', () => {
+    const errorBody = {
+      status: 'error',
+      info: { database: { status: 'up' }, storage: { status: 'up' } },
+      error: { redis: { status: 'down', message: 'Redis unreachable' } },
+    };
+    healthCheckService.check.mockRejectedValue(new ServiceUnavailableException(errorBody));
+    dbHealthIndicator.pingCheck.mockResolvedValue({ database: { status: 'up' } });
+    redisHealthIndicator.pingCheck.mockResolvedValue({
+      redis: { status: 'down', message: 'Redis unreachable' },
+    });
+    storageHealthIndicator.pingCheck.mockResolvedValue({ storage: { status: 'up' } });
+
+    return request(app.getHttpServer())
+      .get('/health')
+      .expect(503)
+      .expect((res) => {
+        // Raw Terminus JSON — not wrapped in the error envelope.
+        expect(res.body).toEqual(
+          expect.objectContaining({
+            status: 'error',
+            error: expect.objectContaining({
+              redis: expect.objectContaining({ status: 'down' }),
+            }),
+          }),
+        );
+        expect(res.body).not.toHaveProperty('success');
       });
   });
 });

@@ -27,7 +27,7 @@ async function bootstrap() {
     .map((s) => s.trim())
     .filter(Boolean);
   const nodeEnv = config.get<string>('app.nodeEnv', 'development');
-  const isProd = nodeEnv === 'production';
+  const isProdLike = nodeEnv === 'production' || nodeEnv === 'staging';
 
   // ── Security ──────────────────────────────────────────────
   // Trust exactly one proxy hop — required for req.ip to reflect the real
@@ -50,7 +50,7 @@ async function bootstrap() {
   configureApp(app);
 
   // ── Swagger (disabled in production) ──────────────────────
-  if (!isProd) {
+  if (!isProdLike) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('ICGroup API')
       .setDescription('ICGroup Admin Panel & Public Portal API')
@@ -75,15 +75,40 @@ async function bootstrap() {
   }
 
   // ── Graceful shutdown ─────────────────────────────────────
+  // NestJS shutdown hooks handle SIGTERM/SIGINT → app.close() which triggers
+  // OnModuleDestroy on every module (Prisma disconnect, Redis quit, BullMQ
+  // worker close). A safety timeout forces process exit if hooks get stuck.
   app.enableShutdownHooks();
+
+  const shutdownTimeoutMs = config.get<number>('app.shutdownTimeoutMs', 10_000);
+  const logger = new Logger('Bootstrap');
+
+  const registerShutdownTimeout = (signal: string) => {
+    process.once(signal, () => {
+      logger.warn(
+        `${signal} received — waiting up to ${shutdownTimeoutMs}ms for graceful shutdown`,
+      );
+      setTimeout(() => {
+        logger.error('Graceful shutdown timed out — forcing process exit');
+        process.exit(1);
+      }, shutdownTimeoutMs).unref();
+    });
+  };
+
+  registerShutdownTimeout('SIGTERM');
+  registerShutdownTimeout('SIGINT');
 
   await app.listen(port);
 
-  const logger = new Logger('Bootstrap');
-  logger.log(`Application running on: http://localhost:${port}/api/v1`);
-  if (!isProd) {
+  logger.log(`[${nodeEnv}] Application running on: http://localhost:${port}/api/v1`);
+  if (!isProdLike) {
     logger.log(`Swagger docs: http://localhost:${port}/api/docs`);
   }
 }
 
-bootstrap();
+bootstrap().catch((err: unknown) => {
+  // Use console.error intentionally — the pino logger may not be initialised
+  // yet when bootstrap fails (e.g. DB connection refused, bad env vars).
+  console.error('Fatal error during bootstrap', err);
+  process.exit(1);
+});

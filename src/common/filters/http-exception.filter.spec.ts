@@ -1,4 +1,9 @@
-import { ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  HttpException,
+  HttpStatus,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { AllExceptionsFilter } from './http-exception.filter.js';
 
 describe('AllExceptionsFilter', () => {
@@ -87,5 +92,32 @@ describe('AllExceptionsFilter', () => {
         path: '/api/v1/items',
       },
     });
+  });
+
+  it('passes through raw Terminus JSON for /health endpoint on 503', () => {
+    const filter = new AllExceptionsFilter();
+    const terminusBody = {
+      status: 'error',
+      info: { database: { status: 'up' } },
+      error: { redis: { status: 'down', message: 'Redis unreachable' } },
+    };
+    const exception = new ServiceUnavailableException(terminusBody);
+
+    const healthRequest = { method: 'GET', url: '/health', path: '/health' };
+    const healthHost = {
+      switchToHttp: () => ({
+        getRequest: () => healthRequest,
+        getResponse: () => response,
+      }),
+    } as never as ArgumentsHost;
+
+    filter.catch(exception, healthHost);
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.SERVICE_UNAVAILABLE);
+    // Raw Terminus body — not wrapped in error envelope.
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'error', error: expect.any(Object) }),
+    );
+    expect(json).toHaveBeenCalledWith(expect.not.objectContaining({ success: false }));
   });
 });
