@@ -207,6 +207,7 @@ jobs:
           source: "docker-compose.prod.yml,deploy"
           target: "/opt/icgroup"
           overwrite: true
+          tar_exec: tar --no-same-owner
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
