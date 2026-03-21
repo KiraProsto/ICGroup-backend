@@ -97,6 +97,25 @@ const nodeEnv = process.env['NODE_ENV'] ?? 'development';
         THROTTLE_LOGIN_LIMIT: Joi.number().integer().positive().default(5),
         TRUST_PROXY: Joi.boolean().default(false),
         SWAGGER_ENABLED: Joi.boolean().default(false),
+        // Swagger HTTP Basic Auth credentials — required in production/staging when Swagger is enabled.
+        SWAGGER_USER: Joi.when('SWAGGER_ENABLED', {
+          is: true,
+          then: Joi.when('NODE_ENV', {
+            is: Joi.valid('production', 'staging'),
+            then: Joi.string().min(4).required(),
+            otherwise: Joi.string().optional(),
+          }),
+          otherwise: Joi.string().optional(),
+        }),
+        SWAGGER_PASSWORD: Joi.when('SWAGGER_ENABLED', {
+          is: true,
+          then: Joi.when('NODE_ENV', {
+            is: Joi.valid('production', 'staging'),
+            then: Joi.string().min(12).required(),
+            otherwise: Joi.string().optional(),
+          }),
+          otherwise: Joi.string().optional(),
+        }),
         // How long (ms) to wait for graceful shutdown before forcing process.exit(1).
         SHUTDOWN_TIMEOUT_MS: Joi.number().integer().min(1000).default(10_000),
       }),

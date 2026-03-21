@@ -10,6 +10,8 @@ export default registerAs('app', () => {
     logLevel: process.env['LOG_LEVEL'] ?? (isProdLike ? 'info' : 'debug'),
     trustProxy: process.env['TRUST_PROXY'] === 'true',
     swaggerEnabled: process.env['SWAGGER_ENABLED'] === 'true',
+    swaggerUser: process.env['SWAGGER_USER'] ?? '',
+    swaggerPassword: process.env['SWAGGER_PASSWORD'] ?? '',
     // Max milliseconds to wait for in-flight requests / module destroy hooks
     // before the process is forcefully terminated on SIGTERM / SIGINT.
     shutdownTimeoutMs: parseInt(process.env['SHUTDOWN_TIMEOUT_MS'] ?? '10000', 10),
