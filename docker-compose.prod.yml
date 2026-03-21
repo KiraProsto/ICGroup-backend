@@ -238,7 +238,7 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - kuma-data:/app/data
+      - uptime-kuma-data:/app/data
     restart: unless-stopped
     networks:
       - icgroup-net
@@ -248,22 +248,24 @@ services:
         max-size: "5m"
         max-file: "2"
 
-# ─────────────────────────────────────────────
-#  Persistent volumes
-# ─────────────────────────────────────────────
 volumes:
   pgdata:
+    driver: local
   redisdata:
+    driver: local
   miniodata:
+    driver: local
   certbot-etc:
+    driver: local
   certbot-var:
+    driver: local
   certbot-webroot:
+    driver: local
   portainer-data:
-  kuma-data:
+    driver: local
+  uptime-kuma-data:
+    driver: local
 
-# ─────────────────────────────────────────────
-#  Internal network
-# ─────────────────────────────────────────────
 networks:
   icgroup-net:
     driver: bridge
