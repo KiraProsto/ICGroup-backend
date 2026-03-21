@@ -98,23 +98,25 @@ const nodeEnv = process.env['NODE_ENV'] ?? 'development';
         TRUST_PROXY: Joi.boolean().default(false),
         SWAGGER_ENABLED: Joi.boolean().default(false),
         // Swagger HTTP Basic Auth credentials — required in production/staging when Swagger is enabled.
+        // .allow('') is needed because docker-compose passes empty strings (not undefined)
+        // when the var is absent from .env.production.
         SWAGGER_USER: Joi.when('SWAGGER_ENABLED', {
           is: true,
           then: Joi.when('NODE_ENV', {
             is: Joi.valid('production', 'staging'),
             then: Joi.string().min(4).required(),
-            otherwise: Joi.string().optional(),
+            otherwise: Joi.string().allow('').optional(),
           }),
-          otherwise: Joi.string().optional(),
+          otherwise: Joi.string().allow('').optional(),
         }),
         SWAGGER_PASSWORD: Joi.when('SWAGGER_ENABLED', {
           is: true,
           then: Joi.when('NODE_ENV', {
             is: Joi.valid('production', 'staging'),
             then: Joi.string().min(12).required(),
-            otherwise: Joi.string().optional(),
+            otherwise: Joi.string().allow('').optional(),
           }),
-          otherwise: Joi.string().optional(),
+          otherwise: Joi.string().allow('').optional(),
         }),
         // How long (ms) to wait for graceful shutdown before forcing process.exit(1).
         SHUTDOWN_TIMEOUT_MS: Joi.number().integer().min(1000).default(10_000),
@@ -218,19 +220,19 @@ const nodeEnv = process.env['NODE_ENV'] ?? 'development';
     // ── Database (global — available to all feature modules) ───────
     PrismaModule,
 
-    // ── Health checks ──────────────────────────────────────
+    // ── Health checks ──────────────────────────────────
     HealthModule,
 
-    // ── Auth (JWT + refresh token) ─────────────────────────
+    // ── Auth (JWT + refresh token) ─────────────────────
     AuthModule,
 
     // ── RBAC (CASL PoliciesGuard — runs after JwtAuthGuard) ─
     CaslModule,
 
-    // ── User management (SUPER_ADMIN only) ────────────────
+    // ── User management (SUPER_ADMIN only) ──────────────
     UsersModule,
 
-    // ── Content management ─────────────────────────────
+    // ── Content management ─────────────────────────
     PagesModule,
     NewsModule,
     MediaModule,
