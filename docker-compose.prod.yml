@@ -15,7 +15,7 @@ services:
   #  Application (production image from GHCR)
   # ─────────────────────────────────────────────
   app:
-    image: ${APP_IMAGE:-ghcr.io/icgroup/icgroup-backend:latest}
+    image: ${APP_IMAGE:-ghcr.io/kiraprosto/icgroup-backend:latest}
     container_name: icgroup-api
     expose:
       - "3000"
