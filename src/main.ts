@@ -36,7 +36,19 @@ async function bootstrap() {
   if (config.get<boolean>('app.trustProxy', false)) {
     app.set('trust proxy', 1);
   }
-  app.use(helmet());
+  app.use(
+    helmet({
+      // Remove upgrade-insecure-requests from CSP — it forces browsers to
+      // rewrite HTTP asset URLs to HTTPS, breaking Swagger UI on plain HTTP.
+      // HTTPS enforcement is handled by Nginx HSTS when TLS is configured.
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+          upgradeInsecureRequests: null,
+        },
+      },
+    }),
+  );
   app.use(cookieParser());
 
   app.enableCors({
