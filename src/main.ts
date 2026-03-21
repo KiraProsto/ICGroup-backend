@@ -6,6 +6,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import basicAuth from 'express-basic-auth';
 import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
 
@@ -65,6 +66,16 @@ async function bootstrap() {
   // Enabled by default in dev/test; opt-in via SWAGGER_ENABLED=true in production.
   const swaggerEnabled = !isProdLike || config.get<boolean>('app.swaggerEnabled', false);
   if (swaggerEnabled) {
+    // Protect Swagger UI with HTTP Basic Auth in production/staging.
+    if (isProdLike) {
+      const swaggerUser = config.getOrThrow<string>('app.swaggerUser');
+      const swaggerPassword = config.getOrThrow<string>('app.swaggerPassword');
+      app.use(
+        ['/api/docs', '/api/docs-json', '/api/docs-yaml'],
+        basicAuth({ challenge: true, users: { [swaggerUser]: swaggerPassword } }),
+      );
+    }
+
     const swaggerConfig = new DocumentBuilder()
       .setTitle('ICGroup API')
       .setDescription('ICGroup Admin Panel & Public Portal API')
