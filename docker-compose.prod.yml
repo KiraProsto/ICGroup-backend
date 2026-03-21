@@ -49,6 +49,8 @@ services:
       THROTTLE_LOGIN_TTL: ${THROTTLE_LOGIN_TTL:-60}
       THROTTLE_LOGIN_LIMIT: ${THROTTLE_LOGIN_LIMIT:-5}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      SWAGGER_USER: ${SWAGGER_USER:-}
+      SWAGGER_PASSWORD: ${SWAGGER_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
