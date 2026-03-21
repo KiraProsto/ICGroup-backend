@@ -49,6 +49,8 @@ services:
       THROTTLE_LOGIN_TTL: ${THROTTLE_LOGIN_TTL:-60}
       THROTTLE_LOGIN_LIMIT: ${THROTTLE_LOGIN_LIMIT:-5}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      SWAGGER_USER: ${SWAGGER_USER:-}
+      SWAGGER_PASSWORD: ${SWAGGER_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -236,7 +238,7 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - uptime-kuma-data:/app/data
+      - kuma-data:/app/data
     restart: unless-stopped
     networks:
       - icgroup-net
@@ -246,24 +248,22 @@ services:
         max-size: "5m"
         max-file: "2"
 
+# ─────────────────────────────────────────────
+#  Persistent volumes
+# ─────────────────────────────────────────────
 volumes:
   pgdata:
-    driver: local
   redisdata:
-    driver: local
   miniodata:
-    driver: local
   certbot-etc:
-    driver: local
   certbot-var:
-    driver: local
   certbot-webroot:
-    driver: local
   portainer-data:
-    driver: local
-  uptime-kuma-data:
-    driver: local
+  kuma-data:
 
+# ─────────────────────────────────────────────
+#  Internal network
+# ─────────────────────────────────────────────
 networks:
   icgroup-net:
     driver: bridge
