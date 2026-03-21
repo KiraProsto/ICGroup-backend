@@ -98,23 +98,25 @@ const nodeEnv = process.env['NODE_ENV'] ?? 'development';
         TRUST_PROXY: Joi.boolean().default(false),
         SWAGGER_ENABLED: Joi.boolean().default(false),
         // Swagger HTTP Basic Auth credentials — required in production/staging when Swagger is enabled.
+        // .allow('') is needed because docker-compose passes empty strings (not undefined)
+        // when the var is absent from .env.production.
         SWAGGER_USER: Joi.when('SWAGGER_ENABLED', {
           is: true,
           then: Joi.when('NODE_ENV', {
             is: Joi.valid('production', 'staging'),
             then: Joi.string().min(4).required(),
-            otherwise: Joi.string().optional(),
+            otherwise: Joi.string().allow('').optional(),
           }),
-          otherwise: Joi.string().optional(),
+          otherwise: Joi.string().allow('').optional(),
         }),
         SWAGGER_PASSWORD: Joi.when('SWAGGER_ENABLED', {
           is: true,
           then: Joi.when('NODE_ENV', {
             is: Joi.valid('production', 'staging'),
             then: Joi.string().min(12).required(),
-            otherwise: Joi.string().optional(),
+            otherwise: Joi.string().allow('').optional(),
           }),
-          otherwise: Joi.string().optional(),
+          otherwise: Joi.string().allow('').optional(),
         }),
         // How long (ms) to wait for graceful shutdown before forcing process.exit(1).
         SHUTDOWN_TIMEOUT_MS: Joi.number().integer().min(1000).default(10_000),
@@ -147,60 +149,49 @@ const nodeEnv = process.env['NODE_ENV'] ?? 'development';
               res.setHeader('X-Request-Id', reqId);
               return reqId;
             },
-            // Strip auth tokens and cookies from request log entries.
-            redact: {
-              paths: ['req.headers.authorization', 'req.headers.cookie'],
-              censor: '[REDACTED]',
-            },
-            // Suppress auto-logging for health/liveness probes — they are
-            // high-frequency and carry no diagnostic value in logs.
-            autoLogging: {
-              ignore: (req) => req.url === '/health',
-            },
-            // Human-readable output in development; raw JSON for Docker/prod/staging.
             ...(isProdLike
               ? {}
               : {
                   transport: {
                     target: 'pino-pretty',
-                    options: { singleLine: true, colorize: true },
+                    options: { colorize: true, translateTime: 'SYS:standard' },
                   },
                 }),
+            // Redact security-sensitive headers so they never appear in log output.
+            redact: [
+              'req.headers.authorization',
+              'req.headers.cookie',
+              'req.headers["x-forwarded-for"]',
+            ],
           },
         };
       },
     }),
 
-    // ── Redis (global — shared ioredis client) ─────────────
+    // ── Database ───────────────────────────────────────────
+    PrismaModule,
+
+    // ── Redis ─────────────────────────────────────────────
     RedisModule,
 
-    // ── BullMQ (global — Redis-backed job queues) ──────────
+    // ── BullMQ (background job queues) ─────────────────────
     BullModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: {
-          host: config.get<string>('redis.host', 'localhost'),
-          port: config.get<number>('redis.port', 6379),
-          password: config.get<string>('redis.password'),
-          maxRetriesPerRequest: null,
-        },
+      inject: [REDIS_CLIENT],
+      useFactory: (redis: Redis) => ({
+        connection: redis,
       }),
     }),
 
-    // ── Rate limiting (Redis-backed — shared across all instances) ──
-    // Two named throttlers: "global" (all routes) and "login" (auth endpoints only).
-    // The "login" throttler MUST be explicitly opted-in via @Throttle({ login: {} })
-    // and skipped everywhere else via @SkipThrottle({ login: true }); otherwise
-    // it silently caps the entire API at 5 req/min per IP.
+    // ── Rate limiting (Redis-backed) ───────────────────────
     ThrottlerModule.forRootAsync({
-      imports: [RedisModule],
-      inject: [REDIS_CLIENT, ConfigService],
-      useFactory: (redis: Redis, config: ConfigService) => ({
+      inject: [ConfigService, REDIS_CLIENT],
+      useFactory: (config: ConfigService, redis: Redis) => ({
         throttlers: [
           {
-            name: 'global',
+            name: 'default',
             ttl: config.get<number>('throttle.ttl', 60) * 1000,
             limit: config.get<number>('throttle.limit', 120),
+            blockDuration: BLOCK_DURATION_USE_TTL,
           },
           {
             name: 'login',
@@ -209,50 +200,28 @@ const nodeEnv = process.env['NODE_ENV'] ?? 'development';
             blockDuration: BLOCK_DURATION_USE_TTL,
           },
         ],
-        // Manually constructed rather than DI-resolved because ThrottlerModule's
-        // forRootAsync factory already receives the Redis client via inject.
         storage: new RedisThrottlerStorage(redis),
       }),
     }),
 
-    // ── Database (global — available to all feature modules) ───────
-    PrismaModule,
-
-    // ── Health checks ──────────────────────────────────────
+    // ── Feature modules ───────────────────────────────────
     HealthModule,
-
-    // ── Auth (JWT + refresh token) ─────────────────────────
     AuthModule,
-
-    // ── RBAC (CASL PoliciesGuard — runs after JwtAuthGuard) ─
     CaslModule,
-
-    // ── User management (SUPER_ADMIN only) ────────────────
     UsersModule,
-
-    // ── Content management ─────────────────────────────
     PagesModule,
     NewsModule,
     MediaModule,
-
-    // Public portal API (unauthenticated, PUBLISHED content only)
     PublicModule,
-
-    // ── Audit logging (BullMQ queue + processor) ───────────
     AuditModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
-    // ThrottlerGuard and JwtAuthGuard are registered as APP_GUARD inside
-    // AuthModule (in that order) so rate-limiting executes before auth.
-
-    // AuditInterceptor runs on all HTTP mutation routes that carry @Audit().
-    // Uses useExisting to reuse the singleton from AuditModule.providers
-    // rather than creating a duplicate instance with useClass.
+    // ── Global interceptors ───────────────────────────────
     {
       provide: APP_INTERCEPTOR,
-      useExisting: AuditInterceptor,
+      useClass: AuditInterceptor,
     },
   ],
 })
