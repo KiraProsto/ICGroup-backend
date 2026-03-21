@@ -224,12 +224,25 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
           script_stop: true
-          envs: GHCR_TOKEN,GHCR_USER
+          envs: GHCR_TOKEN,GHCR_USER,SWAGGER_ENABLED,SWAGGER_USER,SWAGGER_PASSWORD
           script: |
             set -e
 
             APP_DIR="/opt/icgroup"
             cd "$APP_DIR"
+
+            # ── Update Swagger settings in .env.production ──────────
+            # Remove stale Swagger lines (idempotent), then append current values.
+            # Only written when SWAGGER_ENABLED is explicitly "true".
+            if [ "$SWAGGER_ENABLED" = "true" ]; then
+              echo "==> Configuring Swagger credentials in .env.production..."
+              sed -i '/^SWAGGER_ENABLED=/d' .env.production
+              sed -i '/^SWAGGER_USER=/d' .env.production
+              sed -i '/^SWAGGER_PASSWORD=/d' .env.production
+              printf '%s\n' "SWAGGER_ENABLED=true" >> .env.production
+              printf '%s\n' "SWAGGER_USER=$SWAGGER_USER" >> .env.production
+              printf '%s\n' "SWAGGER_PASSWORD=$SWAGGER_PASSWORD" >> .env.production
+            fi
 
             echo "==> Logging in to GHCR..."
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
@@ -261,6 +274,9 @@ jobs:
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GHCR_USER: ${{ github.actor }}
+          SWAGGER_ENABLED: ${{ vars.SWAGGER_ENABLED }}
+          SWAGGER_USER: ${{ vars.SWAGGER_USER }}
+          SWAGGER_PASSWORD: ${{ secrets.SWAGGER_PASSWORD }}
 
       - name: Verify deployment
         uses: appleboy/ssh-action@v1.2.0
