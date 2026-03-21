@@ -215,10 +215,10 @@ jobs:
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
             echo "==> Pulling latest image..."
-            docker compose -f docker-compose.prod.yml pull app
+            docker compose -f docker-compose.prod.yml --env-file .env.production pull app
 
             echo "==> Deploying..."
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker compose -f docker-compose.prod.yml --env-file .env.production up -d --remove-orphans
 
             echo "==> Waiting for health check..."
             for i in $(seq 1 30); do
@@ -228,7 +228,7 @@ jobs:
               fi
               if [ "$i" -eq 30 ]; then
                 echo "==> Health check FAILED after 30 attempts"
-                docker compose -f docker-compose.prod.yml logs --tail=50 app
+                docker compose -f docker-compose.prod.yml --env-file .env.production logs --tail=50 app
                 exit 1
               fi
               sleep 2
@@ -248,7 +248,7 @@ jobs:
           port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
           script: |
             echo "==> Container status:"
-            docker compose -f /opt/icgroup/docker-compose.prod.yml ps
+            docker compose -f /opt/icgroup/docker-compose.prod.yml --env-file /opt/icgroup/.env.production ps
             echo ""
             echo "==> API health:"
             curl -sf http://localhost:3000/health | head -c 500
