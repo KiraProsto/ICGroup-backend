@@ -257,6 +257,10 @@ jobs:
             echo "==> Deploying..."
             docker compose -f docker-compose.prod.yml --env-file .env.production up -d --remove-orphans
 
+            echo "==> Reloading nginx to pick up new container IPs..."
+            docker compose -f docker-compose.prod.yml --env-file .env.production exec -T nginx nginx -s reload
+            sleep 2
+
             echo "==> Waiting for health check..."
             for i in $(seq 1 30); do
               if curl -skf https://localhost/health > /dev/null 2>&1; then
