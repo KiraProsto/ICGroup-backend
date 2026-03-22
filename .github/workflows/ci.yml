@@ -234,14 +234,18 @@ jobs:
             # ── Update Swagger settings in .env.production ──────────
             # Remove stale Swagger lines (idempotent), then append current values.
             # Only written when SWAGGER_ENABLED is explicitly "true".
+            # Dollar signs in values are doubled ($$) so docker-compose treats
+            # them as literal '$' instead of variable references.
             if [ "$SWAGGER_ENABLED" = "true" ]; then
               echo "==> Configuring Swagger credentials in .env.production..."
+              ESCAPED_USER=$(printf '%s' "$SWAGGER_USER" | sed 's/\$/\$\$/g')
+              ESCAPED_PASS=$(printf '%s' "$SWAGGER_PASSWORD" | sed 's/\$/\$\$/g')
               sed -i '/^SWAGGER_ENABLED=/d' .env.production
               sed -i '/^SWAGGER_USER=/d' .env.production
               sed -i '/^SWAGGER_PASSWORD=/d' .env.production
               printf '%s\n' "SWAGGER_ENABLED=true" >> .env.production
-              printf '%s\n' "SWAGGER_USER=$SWAGGER_USER" >> .env.production
-              printf '%s\n' "SWAGGER_PASSWORD=$SWAGGER_PASSWORD" >> .env.production
+              printf '%s\n' "SWAGGER_USER=$ESCAPED_USER" >> .env.production
+              printf '%s\n' "SWAGGER_PASSWORD=$ESCAPED_PASS" >> .env.production
             fi
 
             echo "==> Logging in to GHCR..."
@@ -255,7 +259,7 @@ jobs:
 
             echo "==> Waiting for health check..."
             for i in $(seq 1 30); do
-              if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+              if curl -skf https://localhost/health > /dev/null 2>&1; then
                 echo "==> Health check passed!"
                 break
               fi
@@ -290,5 +294,5 @@ jobs:
             docker compose -f /opt/icgroup/docker-compose.prod.yml --env-file /opt/icgroup/.env.production ps
             echo ""
             echo "==> API health:"
-            curl -sf http://localhost:3000/health | head -c 500
+            curl -sk https://localhost/health | head -c 500
             echo ""
