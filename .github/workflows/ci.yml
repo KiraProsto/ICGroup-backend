@@ -263,7 +263,7 @@ jobs:
 
             echo "==> Waiting for health check..."
             for i in $(seq 1 30); do
-              if curl -sf http://localhost/health > /dev/null 2>&1; then
+              if curl -sf --connect-timeout 5 --max-time 10 http://localhost/health > /dev/null 2>&1; then
                 echo "==> Health check passed!"
                 break
               fi
