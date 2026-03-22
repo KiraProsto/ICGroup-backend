@@ -263,7 +263,7 @@ jobs:
 
             echo "==> Waiting for health check..."
             for i in $(seq 1 30); do
-              if curl -skf https://localhost/health > /dev/null 2>&1; then
+              if curl -sf --connect-timeout 5 --max-time 10 http://localhost/health > /dev/null 2>&1; then
                 echo "==> Health check passed!"
                 break
               fi
@@ -298,5 +298,12 @@ jobs:
             docker compose -f /opt/icgroup/docker-compose.prod.yml --env-file /opt/icgroup/.env.production ps
             echo ""
             echo "==> API health:"
-            curl -sk https://localhost/health | head -c 500
+            HEALTH_RESPONSE="$(curl -fsS --max-time 10 http://localhost/health 2>&1)"
+            CURL_STATUS=$?
+            if [ "$CURL_STATUS" -ne 0 ]; then
+              echo "Health check failed (curl exit code: $CURL_STATUS)"
+              echo "$HEALTH_RESPONSE"
+              exit 1
+            fi
+            echo "$HEALTH_RESPONSE" | head -c 500
             echo ""
