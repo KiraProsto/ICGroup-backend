@@ -32,7 +32,7 @@ push to main ──▶ Lint ──▶ Tests ──▶ E2E ──▶ Docker Build
                TypeCheck
 ```
 
-### GitHub Actions Jobs
+### GitHub Actions Jobs 
 
 | Job | Trigger | What it does |
 |---|---|---|
