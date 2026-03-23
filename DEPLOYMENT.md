@@ -48,12 +48,6 @@ push to main ──▶ Lint ──▶ Tests ──▶ E2E ──▶ Docker Build
 - Domain name pointing to VPS IP (A record) — optional for initial setup
 - GitHub repository with Actions enabled
 
-> **Windows / PowerShell users:** PowerShell does not support the `<` input
-> redirection operator. Use `Get-Content` piped to `ssh` instead:
-> ```powershell
-> # Instead of: ssh user@host 'cmd' < file.txt
-> Get-Content file.txt | ssh user@host 'cmd'
-> ```
 
 ## Initial Server Setup
 
