@@ -1203,16 +1203,16 @@ export class NewsService {
     if (orderedCardIds.length === 0) return;
 
     const cases = orderedCardIds.map(
-      (cardId, index) => Prisma.sql`WHEN ${cardId}::uuid THEN ${index}`,
+      (cardId, index) => Prisma.sql`WHEN ${cardId} THEN ${index}::int`,
     );
-    const idList = Prisma.join(orderedCardIds.map((id) => Prisma.sql`${id}::uuid`));
+    const idList = Prisma.join(orderedCardIds.map((id) => Prisma.sql`${id}`));
 
     const sql = Prisma.sql`
       UPDATE "article_cards"
-      SET "order" = CASE "id"
+      SET "order" = CASE "id"::text
         ${Prisma.join(cases, ' ')}
       END
-      WHERE "id" IN (${idList})
+      WHERE "id"::text IN (${idList})
     `;
 
     if (tx) {
